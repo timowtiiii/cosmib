@@ -64,7 +64,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['cart_data'])) {
 
         } catch (mysqli_sql_exception $exception) {
             $conn->rollback();
-            $error = "There was an error processing your order. Please try again.";
+            $error = "There was an error processing your order: " . $exception->getMessage() . ". Please try again.";
         }
     }
 }
