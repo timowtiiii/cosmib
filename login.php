@@ -87,9 +87,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             <button type="submit" class="btn-primary" style="width: 100%; padding: 12px;">Login</button>
             <p style="text-align: center; margin-top: 20px;">Don't have an account? <a href="signup.php">Sign up here</a>.</p>
             <p style="text-align: center; margin-top: 10px;">
-                <a href="admin_login.php">Log in as Admin</a>
-            </p>
-            <p style="text-align: center; margin-top: 10px;">
                 <a href="index.php" class="btn-secondary" style="text-decoration: none; padding: 10px 20px;">Back to Store</a>
             </p>
         </form>

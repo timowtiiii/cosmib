@@ -89,11 +89,12 @@ $result = $conn->query($sql);
         <div class="admin-sidebar">
             <h2>Admin Panel</h2>
             <ul>
-                <li><a href="admin_dashboard.php">Dashboard</a></li>
+                <li><a href="admin_dashboard.php"><i class="fas fa-tachometer-alt"></i> Dashboard</a></li>
                 <li><a href="edit_products.php" class="active">Manage Products</a></li>
                 <li><a href="admin_orders.php">Orders</a></li>
-                <li><a href="#">Users</a></li>
-                <li><a href="logout.php">Sign Out</a></li>
+                <li><a href="admin_users.php"><i class="fas fa-users"></i> Users</a></li>
+                <li><a href="index.php" target="_blank"><i class="fas fa-external-link-alt"></i> View Site</a></li>
+                <li><a href="logout.php"><i class="fas fa-sign-out-alt"></i> Sign Out</a></li>
             </ul>
         </div>
         <div class="admin-main">

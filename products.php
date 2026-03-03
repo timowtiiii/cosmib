@@ -22,8 +22,17 @@
                     <li><a href="index.php#about">About</a></li>
                     <li><a href="products.php" class="active">Shop</a></li>
                     <?php if (isset($_SESSION['user_id'])): ?>
-                        <li><span>Welcome, <?php echo htmlspecialchars($_SESSION['username']); ?>!</span></li>
-                        <li><a href="logout.php" class="btn-cta">Logout</a></li>
+                        <li class="user-menu">
+                            <div class="user-menu-toggle">
+                                <span>Welcome, <?php echo htmlspecialchars($_SESSION['username']); ?>!</span> <i class="fas fa-caret-down"></i>
+                            </div>
+                            <ul class="user-menu-dropdown">
+                                <?php if (isset($_SESSION['admin_loggedin']) && $_SESSION['admin_loggedin'] === true): ?>
+                                    <li><a href="admin_dashboard.php">Admin Panel</a></li>
+                                <?php endif; ?>
+                                <li><a href="logout.php">Logout</a></li>
+                            </ul>
+                        </li>
                     <?php else: ?>
                         <li><a href="login.php">Login</a></li>
                         <li><a href="signup.php" class="btn-cta">Sign Up</a></li>
@@ -78,8 +87,25 @@
                 <div class="footer-info">
                     <h3>COSMI<span>BEAUTII</span></h3>
                     <p>Elevating beauty with nature's finest ingredients.</p>
+                    <div class="footer-contact">
+                        <p><i class="fas fa-map-marker-alt"></i> #99 MH Del Pilar Street, Brgy Balite,, Rodriguez, Philippines, 1860</p>
+                        <p><i class="fas fa-envelope"></i>  wihiasiahrdepartment@gmail.com</p>
+                        <p><i class="fas fa-phone"></i>  02-7001-2508</p>
+                    </div>
+                </div>
+                <div class="footer-links">
+                    <h4>Quick Links</h4>
+                    <ul>
+                        <li><a href="index.php#home">Home</a></li>
+                        <li><a href="index.php#featured">Featured</a></li>
+                        <li><a href="index.php#about">About</a></li>
+                        <li><a href="products.php">Shop</a></li>
+                        <li><a href="privacy_policy.php">Privacy Policy</a></li>
+                        <li><a href="terms_of_service.php">Terms of Service</a></li>
+                    </ul>
                 </div>
                 <div class="footer-socials">
+                    <h4>Follow Us</h4>
                     <a href="#"><i class="fab fa-facebook"></i></a>
                     <a href="#"><i class="fab fa-github"></i></a>
                     <a href="#"><i class="fab fa-linkedin"></i></a>

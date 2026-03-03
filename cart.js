@@ -84,6 +84,10 @@ document.addEventListener('DOMContentLoaded', () => {
         const cartItemDiv = target.closest('.cart-item');
         if (!cartItemDiv) return;
 
+        // Stop the click from bubbling up to the document, which would trigger the
+        // 'click outside' handler and close the cart.
+        event.stopPropagation();
+
         const productId = cartItemDiv.dataset.productId;
         const itemIndex = cart.findIndex(item => item.id === productId);
 
@@ -103,17 +107,51 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Toggle floating cart visibility
     cartToggleIcon.addEventListener('click', () => {
+        // Close user menu if it's open to ensure only one popup is visible
+        const userMenu = document.querySelector('.user-menu');
+        if (userMenu && userMenu.querySelector('.user-menu-dropdown').classList.contains('show')) {
+            userMenu.querySelector('.user-menu-dropdown').classList.remove('show');
+            userMenu.querySelector('.user-menu-toggle').classList.remove('open');
+        }
         floatingCart.classList.toggle('open');
     });
 
+    // Close cart when 'x' is clicked
     closeCartBtn.addEventListener('click', () => {
         floatingCart.classList.remove('open');
     });
 
-    // Close cart if clicked outside
+    // User dropdown menu
+    const userMenu = document.querySelector('.user-menu');
+    if (userMenu) {
+        const userMenuToggle = userMenu.querySelector('.user-menu-toggle');
+        const userMenuDropdown = userMenu.querySelector('.user-menu-dropdown');
+
+        userMenuToggle.addEventListener('click', () => {
+            // Close cart if it's open to ensure only one popup is visible
+            if (floatingCart.classList.contains('open')) {
+                floatingCart.classList.remove('open');
+            }
+            userMenuDropdown.classList.toggle('show');
+            userMenuToggle.classList.toggle('open');
+        });
+    }
+
+    // Combined listener for clicks outside of active elements
     document.addEventListener('click', (event) => {
-        if (!floatingCart.contains(event.target) && !cartToggleIcon.contains(event.target) && floatingCart.classList.contains('open')) {
+        // Close cart if clicked outside
+        if (floatingCart.classList.contains('open') && !floatingCart.contains(event.target) && !cartToggleIcon.contains(event.target)) {
             floatingCart.classList.remove('open');
+        }
+
+        // Close user dropdown if clicked outside
+        if (userMenu) {
+            const userMenuDropdown = userMenu.querySelector('.user-menu-dropdown');
+            const userMenuToggle = userMenu.querySelector('.user-menu-toggle');
+            if (userMenuDropdown.classList.contains('show') && !userMenu.contains(event.target)) {
+                userMenuDropdown.classList.remove('show');
+                userMenuToggle.classList.remove('open');
+            }
         }
     });
 

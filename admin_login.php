@@ -6,8 +6,11 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
     $username = $_POST['username'];
     $password = $_POST['password'];
 
-    $sql = "SELECT id, password FROM admin WHERE username = '$username'";
-    $result = $conn->query($sql);
+    $sql = "SELECT id, password FROM admin WHERE username = ?";
+    $stmt = $conn->prepare($sql);
+    $stmt->bind_param("s", $username);
+    $stmt->execute();
+    $result = $stmt->get_result();
 
     if ($result->num_rows > 0) {
         $row = $result->fetch_assoc();
@@ -18,7 +21,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
 
             $_SESSION['admin_loggedin'] = true;
             $_SESSION['admin_id'] = $row['id'];
-            $_SESSION['admin_username'] = $username;
+            $_SESSION['username'] = $username;
             header("location: admin_dashboard.php");
         } else {
             $error = "Invalid password";

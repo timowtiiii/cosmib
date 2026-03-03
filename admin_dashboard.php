@@ -6,21 +6,23 @@ if(!isset($_SESSION['admin_loggedin']) || $_SESSION['admin_loggedin'] !== true){
     header("location: admin_login.php");
     exit;
 }
-// Handle form submissions for adding/editing products
-if($_SERVER["REQUEST_METHOD"] == "POST"){
-    if(isset($_POST['add_product'])){
-        $name = $_POST['name'];
-        $description = $_POST['description'];
-        $price = $_POST['price'];
-        $image = $_FILES['image']['name'];
-        $target = "images/".basename($image);
-        $sql = "INSERT INTO products (name, description, price, image) VALUES (?, ?, ?, ?)";
-        $stmt = $conn->prepare($sql);
-        $stmt->bind_param("ssds", $name, $description, $price, $image);
-        $stmt->execute();
-        move_uploaded_file($_FILES['image']['tmp_name'], $target);
-    }
-}
+
+// Fetch dashboard data
+$total_products_sql = "SELECT COUNT(*) AS total_products FROM products";
+$total_products_result = $conn->query($total_products_sql);
+$total_products = $total_products_result->fetch_assoc()['total_products'];
+
+$total_orders_sql = "SELECT COUNT(*) AS total_orders FROM orders";
+$total_orders_result = $conn->query($total_orders_sql);
+$total_orders = $total_orders_result->fetch_assoc()['total_orders'];
+
+$total_users_sql = "SELECT COUNT(*) AS total_users FROM users";
+$total_users_result = $conn->query($total_users_sql);
+$total_users = $total_users_result->fetch_assoc()['total_users'];
+
+// Fetch recent orders
+$recent_orders_sql = "SELECT id, customer_name, total_price, order_date FROM orders ORDER BY order_date DESC LIMIT 5";
+$recent_orders_result = $conn->query($recent_orders_sql);
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -33,212 +35,64 @@ if($_SERVER["REQUEST_METHOD"] == "POST"){
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
 </head>
 <body>
-
-    <header class="navbar">
-        <div class="container">
-            <div class="logo">COSMI<span>BEAUTII</span> (Admin)</div>
-            <nav>
-                <ul class="nav-links">
-                    <li><a href="index.php" target="_blank">View Site</a></li>
-                    <li><a href="logout.php" class="btn-cta">Logout</a></li>
-                </ul>
-            </nav>
+    <div class="admin-container">
+        <div class="admin-sidebar">
+            <h2>Admin Panel</h2>
+            <ul>
+                <li><a href="admin_dashboard.php" class="active"><i class="fas fa-tachometer-alt"></i> Dashboard</a></li>
+                <li><a href="edit_products.php"><i class="fas fa-box"></i> Manage Products</a></li>
+                <li><a href="admin_orders.php"><i class="fas fa-receipt"></i> Orders</a></li>
+                <li><a href="admin_users.php"><i class="fas fa-users"></i> Users</a></li>
+                <li><a href="index.php" target="_blank"><i class="fas fa-external-link-alt"></i> View Site</a></li>
+                <li><a href="logout.php"><i class="fas fa-sign-out-alt"></i> Sign Out</a></li>
+            </ul>
         </div>
-    </header>
-
-    <section id="home" class="hero">
-        <div class="container">
-            <h1 id="hero-title" contenteditable="true" data-key="title">Elegance in Every Drop.</h1>
-            <p id="hero-subtitle" contenteditable="true" data-key="subtitle">Discover our exclusive collection of premium skincare and beauty products, crafted with the finest ingredients to bring out your natural radiance.</p>
-            <a href="products.php" class="btn-primary">Explore Products</a>
-        </div>
-    </section>
-
-    <section id="featured" class="services">
-        <div class="container">
-            <h2 id="featured-title" class="section-title" contenteditable="true" data-key="title">Featured Products</h2>
-            
-            <div class="card" style="margin-bottom: 30px;">
-                <h3 style="text-align: left; margin-bottom: 20px;">Add New Product</h3>
-                <form action="" method="post" enctype="multipart/form-data">
-                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px;">
-                        <input type="text" name="name" placeholder="Product Name" required style="padding: 10px;">
-                        <input type="number" step="0.01" name="price" placeholder="Price" required style="padding: 10px;">
-                    </div>
-                    <textarea name="description" placeholder="Product Description" required style="width: 100%; padding: 10px; margin-top: 20px;"></textarea>
-                    <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 20px;">
-                        <input type="file" name="image" required>
-                        <button type="submit" name="add_product" class="btn-primary" style="margin-top: 0;">Add Product</button>
-                    </div>
-                </form>
+        <div class="admin-main">
+            <div class="admin-header">
+                <h3><i class="fas fa-tachometer-alt"></i> Dashboard</h3>
+                <div class="admin-user-info">Welcome, <?php echo isset($_SESSION['username']) ? htmlspecialchars($_SESSION['username']) : 'Admin'; ?>!</div>
             </div>
-            
-            <div class="grid">
-                <?php
-                $sql = "SELECT * FROM products ORDER BY reg_date DESC";
-                $result = $conn->query($sql);
 
-                if ($result->num_rows > 0) {
-                    while($row = $result->fetch_assoc()) {
-                ?>
-                <div class="card" data-id="<?php echo $row['id']; ?>">
-                    <img src="images/<?php echo htmlspecialchars($row['image']); ?>" alt="<?php echo htmlspecialchars($row['name']); ?>" style="width:100%; border-radius: 15px; margin-bottom: 20px;">
-                    <h3 contenteditable="true" data-key="name"><?php echo htmlspecialchars($row['name']); ?></h3>
-                    <p contenteditable="true" data-key="description"><?php echo htmlspecialchars($row['description']); ?></p>
-                    <p style="font-size: 1.2rem; font-weight: 600; color: var(--accent); margin-top: 10px;">₱<span contenteditable="true" data-key="price"><?php echo htmlspecialchars($row['price']); ?></span></p>
-                    <button class="save-btn">Save</button>
-                    <button class="delete-btn">Delete</button>
-                </div>
-                <?php
-                    }
-                } else {
-                    echo "<p>No products available at the moment.</p>";
-                }
-                ?>
-            </div>
-        </div>
-    </section>
-
-    <section id="about" class="about-section">
-        <div class="container">
-            <h2 id="about-title" class="section-title" contenteditable="true" data-key="title">About COSMI BEAUTII</h2>
-            <div class="about-content">
-                <div class="about-text">
-                    <p id="about-p1" contenteditable="true" data-key="p1">At COSMI BEAUTII, we believe that beauty is an art, and your skin is the canvas. Our journey began with a simple mission: to create luxurious, effective, and ethically sourced beauty products that inspire confidence and celebrate individuality.</p>
-                    <p id="about-p2" contenteditable="true" data-key="p2">We blend the finest natural ingredients with cutting-edge science to develop skincare and makeup that not only beautifies but also nourishes. Our products are cruelty-free, paraben-free, and crafted with love and respect for our planet.</p>
-                    <a href="#" class="btn-secondary">Learn More</a>
-                </div>
-                <div class="about-image">
-                    <img src="images/about-us.jpg" alt="About Us">
-                </div>
-            </div>
-        </div>
-    </section>
-
-    <footer class="footer">
-        <div class="container">
-            <div class="footer-grid">
-                <div class="footer-info">
-                    <h3 id="footer-title" contenteditable="true" data-key="title">COSMI<span>BEAUTII</span></h3>
-                    <p id="footer-subtitle" contenteditable="true" data-key="subtitle">Elevating beauty with nature's finest ingredients.</p>
-                    <div class="footer-contact">
-                        <p id="footer-address" contenteditable="true" data-key="address"><i class="fas fa-map-marker-alt"></i> #99 MH Del Pilar Street, Brgy Balite,, Rodriguez, Philippines, 1860</p>
-                        <p id="footer-email" contenteditable="true" data-key="email"><i class="fas fa-envelope"></i> wihiasiahrdepartment@gmail.com</p>
-                        <p id="footer-phone" contenteditable="true" data-key="phone"><i class="fas fa-phone"></i> 02-7001-2508</p>
+            <div class="admin-widgets">
+                <div class="widget">
+                    <div class="widget-icon"><i class="fas fa-box"></i></div>
+                    <div class="widget-info">
+                        <h4>Total Products</h4>
+                        <p><?php echo $total_products; ?></p>
                     </div>
                 </div>
-                <div class="footer-links">
-                    <h4 id="footer-links-title" contenteditable="true" data-key="title">Quick Links</h4>
-                    <ul>
-                        <li><a href="#home">Home</a></li>
-                        <li><a href="#featured">Featured</a></li>
-                        <li><a href="#about">About</a></li>
-                        <li><a href="products.php">Shop</a></li>
-                        <li><a href="#">Privacy Policy</a></li>
-                        <li><a href="#">Terms of Service</a></li>
+                <div class="widget">
+                    <div class="widget-icon"><i class="fas fa-receipt"></i></div>
+                    <div class="widget-info">
+                        <h4>Total Orders</h4>
+                        <p><?php echo $total_orders; ?></p>
+                    </div>
+                </div>
+                <div class="widget">
+                    <div class="widget-icon"><i class="fas fa-users"></i></div>
+                    <div class="widget-info">
+                        <h4>Total Users</h4>
+                        <p><?php echo $total_users; ?></p>
+                    </div>
+                </div>
+            </div>
+
+            <div class="admin-section">
+                <h3>Recent Orders</h3>
+                <?php if ($recent_orders_result->num_rows > 0): ?>
+                    <ul class="activity-list">
+                        <?php while($order = $recent_orders_result->fetch_assoc()): ?>
+                            <li>
+                                <i class="fas fa-shopping-cart"></i>
+                                Order #<?php echo htmlspecialchars($order['id']); ?> by <?php echo htmlspecialchars($order['customer_name']); ?> for ₱<?php echo number_format($order['total_price'], 2); ?> on <?php echo date('M d, Y', strtotime($order['order_date'])); ?>
+                            </li>
+                        <?php endwhile; ?>
                     </ul>
-                </div>
-                <div class="footer-socials">
-                    <h4 id="footer-socials-title" contenteditable="true" data-key="title">Follow Us</h4>
-                    <a href="#"><i class="fab fa-facebook"></i></a>
-                    <a href="#"><i class="fab fa-github"></i></a>
-                    <a href="#"><i class="fab fa-linkedin"></i></a>
-                </div>
-            </div>
-            <div class="footer-bottom">
-                <p>&copy; <?php echo date("2026"); ?> COSMI BEAUTII. All rights reserved.</p>
+                <?php else: ?>
+                    <p>No recent orders.</p>
+                <?php endif; ?>
             </div>
         </div>
-    </footer>
-    
-    <div id="save-changes-container">
-        <button id="save-all-changes" class="btn-primary">Save All Changes</button>
     </div>
-    
-    <script>
-        document.getElementById('save-all-changes').addEventListener('click', () => {
-            const editableElements = document.querySelectorAll('[contenteditable="true"]');
-            const changes = {};
-
-            editableElements.forEach(el => {
-                const id = el.id || el.parentElement.dataset.id || el.parentElement.parentElement.dataset.id;
-                const key = el.dataset.key || el.tagName.toLowerCase();
-                const content = el.innerHTML;
-                
-                if(id) {
-                    if(!changes[id]) {
-                        changes[id] = {};
-                    }
-                    changes[id][key] = content;
-                } else {
-                    if(!changes['page_content']) {
-                        changes['page_content'] = {};
-                    }
-                    changes['page_content'][el.id] = content;
-                }
-            });
-
-            const formData = new FormData();
-            formData.append('changes', JSON.stringify(changes));
-
-            fetch('update_content.php', {
-                method: 'POST',
-                body: formData
-            })
-            .then(response => response.text())
-            .then(data => {
-                console.log(data);
-                alert('All changes saved successfully!');
-            });
-        });
-
-        document.querySelectorAll('.save-btn').forEach(button => {
-            button.addEventListener('click', () => {
-                const card = button.closest('.card');
-                const id = card.dataset.id;
-                const name = card.querySelector('h3').innerText;
-                const description = card.querySelector('p').innerText;
-                const price = card.querySelector('span').innerText;
-
-                const formData = new FormData();
-                formData.append('id', id);
-                formData.append('name', name);
-                formData.append('description', description);
-                formData.append('price', price);
-
-                fetch('save_product.php', {
-                    method: 'POST',
-                    body: formData
-                })
-                .then(response => response.text())
-                .then(data => {
-                    console.log(data);
-                    alert('Product saved successfully!');
-                });
-            });
-        });
-
-        document.querySelectorAll('.delete-btn').forEach(button => {
-            button.addEventListener('click', () => {
-                if(confirm('Are you sure you want to delete this product?')){
-                    const card = button.closest('.card');
-                    const id = card.dataset.id;
-
-                    const formData = new FormData();
-                    formData.append('id', id);
-
-                    fetch('delete_product.php', {
-                        method: 'POST',
-                        body: formData
-                    })
-                    .then(response => response.text())
-                    .then(data => {
-                        console.log(data);
-                        card.remove();
-                    });
-                }
-            });
-        });
-    </script>
 </body>
 </html>
