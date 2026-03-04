@@ -1,0 +1,40 @@
+{
+  "040000000": {
+    "region_name": "REGION IV-A (CALABARZON)",
+    "province_list": {
+      "LAGUNA": {
+        "municipality_list": {
+          "CALAMBA CITY": {
+            "barangay_list": [
+              "BAGONG KALSADA",
+              "BANADERO",
+              "BANLIC",
+              "BARANDAL",
+              "BATINO"
+            ]
+          },
+          "SAN PABLO CITY": {
+            "barangay_list": [
+              "I-A",
+              "I-B",
+              "II-A",
+              "II-B",
+              "II-C"
+            ]
+          }
+        }
+      },
+      "CAVITE": {
+        "municipality_list": {
+          "BACOOR CITY": {
+            "barangay_list": [
+              "ALIMA",
+              "ANZAR",
+              "BANALO"
+            ]
+          }
+        }
+      }
+    }
+  }
+}

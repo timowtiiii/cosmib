@@ -13,6 +13,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $email = $_POST['email']; // Get email from form
     $confirm_password = $_POST['confirm_password'];
 
+    // Get address from form
+    $region = trim($_POST['region']);
+    $province = trim($_POST['province']);
+    $city = trim($_POST['city']);
+    $barangay = trim($_POST['barangay']);
+
     if ($password !== $confirm_password) {
         $error = "Passwords do not match.";
     } elseif (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
@@ -30,9 +36,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $error = "Username or email already taken."; // More specific error
         } else {
             $hashed_password = password_hash($password, PASSWORD_DEFAULT);
-            $sql_insert = "INSERT INTO users (username, email, password) VALUES (?, ?, ?)"; // Include email
+            
+            // IMPORTANT: You must add these new columns (region, province, city, barangay) to your `users` table in the database.
+            $sql_insert = "INSERT INTO users (username, email, password, region, province, city, barangay) VALUES (?, ?, ?, ?, ?, ?, ?)";
             $stmt_insert = $conn->prepare($sql_insert);
-            $stmt_insert->bind_param("sss", $username, $email, $hashed_password); // Bind email
+            $stmt_insert->bind_param("sssssss", $username, $email, $hashed_password, $region, $province, $city, $barangay);
 
             // Regenerate session ID after successful signup to prevent session fixation
             session_regenerate_id(true);
@@ -56,37 +64,61 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     <link rel="stylesheet" href="style.css">
 </head>
 <body>
-    <div class="container" style="max-width: 400px; margin-top: 100px;">
-        <form action="signup.php" method="post" class="card" style="padding: 40px;">
-            <h2 class="section-title" style="text-align: center; margin-bottom: 30px;">Create Account</h2>
+    <div class="form-container">
+        <form action="signup.php" method="post" class="card form-card">
+            <h2 class="section-title">Create Account</h2>
             
             <?php if (isset($error)): ?>
-                <p style="color: red; text-align: center; margin-bottom: 20px;"><?php echo htmlspecialchars($error); ?></p>
+                <p class="error-message"><?php echo htmlspecialchars($error); ?></p>
             <?php endif; ?>
 
-            <div style="margin-bottom: 20px;">
-                <label for="username" style="display: block; margin-bottom: 5px; font-weight: 600;">Username</label>
-                <input type="text" id="username" name="username" required style="width: 100%; padding: 10px;">
+            <div class="form-group">
+                <label for="username">Username</label>
+                <input type="text" id="username" name="username" class="form-control" required>
             </div>
 
-            <div style="margin-bottom: 20px;">
-                <label for="email" style="display: block; margin-bottom: 5px; font-weight: 600;">Email Address</label>
-                <input type="email" id="email" name="email" required style="width: 100%; padding: 10px;">
+            <div class="form-group">
+                <label for="email">Email Address</label>
+                <input type="email" id="email" name="email" class="form-control" required>
             </div>
 
-            <div style="margin-bottom: 20px;">
-                <label for="password" style="display: block; margin-bottom: 5px; font-weight: 600;">Password</label>
-                <input type="password" id="password" name="password" required style="width: 100%; padding: 10px;">
+            <div class="form-group">
+                <label for="password">Password</label>
+                <input type="password" id="password" name="password" class="form-control" required>
             </div>
 
-            <div style="margin-bottom: 30px;">
-                <label for="confirm_password" style="display: block; margin-bottom: 5px; font-weight: 600;">Confirm Password</label>
-                <input type="password" id="confirm_password" name="confirm_password" required style="width: 100%; padding: 10px;">
+            <div class="form-group">
+                <label for="confirm_password">Confirm Password</label>
+                <input type="password" id="confirm_password" name="confirm_password" class="form-control" required>
             </div>
 
-            <button type="submit" class="btn-primary" style="width: 100%; padding: 12px;">Sign Up</button>
-            <p style="text-align: center; margin-top: 20px;">Already have an account? <a href="login.php">Login here</a>.</p>
+            <hr>
+            <h3>Address</h3>
+
+            <div class="form-group">
+                <label for="region">Region</label>
+                <input type="text" id="region" name="region" class="form-control" required>
+            </div>
+
+            <div class="form-group">
+                <label for="province">Province</label>
+                <input type="text" id="province" name="province" class="form-control" required>
+            </div>
+
+            <div class="form-group">
+                <label for="city">City / Municipality</label>
+                <input type="text" id="city" name="city" class="form-control" required>
+            </div>
+
+            <div class="form-group">
+                <label for="barangay">Barangay</label>
+                <input type="text" id="barangay" name="barangay" class="form-control" required>
+            </div>
+
+            <button type="submit" class="btn-primary">Sign Up</button>
+            <p class="form-footer-text">Already have an account? <a href="login.php">Login here</a>.</p>
         </form>
     </div>
+
 </body>
 </html>

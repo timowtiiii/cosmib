@@ -236,8 +236,10 @@
 
             nextButton.addEventListener('click', () => {
                 if (currentIndex < slides.length - slidesPerView) {
-                    currentIndex += slidesPerView;
-                    updateCarouselPosition();
+                    // Ensure currentIndex does not go beyond the last possible starting slide
+                    const maxIndex = slides.length - slidesPerView;
+                    currentIndex = Math.min(currentIndex + slidesPerView, maxIndex);
+                    updateCarouselPosition(); // Re-added this line
                     updateIndicators();
                     toggleNavButtons();
                 }
@@ -245,8 +247,9 @@
 
             prevButton.addEventListener('click', () => {
                 if (currentIndex > 0) {
-                    currentIndex -= slidesPerView;
-                    updateCarouselPosition();
+                    // Ensure currentIndex does not go below 0
+                    currentIndex = Math.max(currentIndex - slidesPerView, 0);
+                    updateCarouselPosition(); // Re-added this line
                     updateIndicators();
                     toggleNavButtons();
                 }

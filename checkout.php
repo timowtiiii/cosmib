@@ -16,16 +16,37 @@ if (!isset($_SESSION['user_id'])) {
 $user_name = $_SESSION['username'] ?? '';
 $user_email = $_SESSION['email'] ?? '';
 
+// --- Pancake API Configuration ---
+// IMPORTANT: Replace with your actual Pancake application URL.
+$pancake_api_url = 'https://your-pancake-app.com/api/v1'; 
+// IMPORTANT: Move this key to a secure configuration file and do not expose it publicly.
+$pancake_api_key = 'db9fa3fcc59e4a9b9ba66aa82800755e';
+
+$pancake_config = [
+    'api_url' => $pancake_api_url,
+    'api_key' => $pancake_api_key,
+];
+
 // Handle order submission
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['cart_data'])) {
     $name = trim($_POST['name']);
     $email = trim($_POST['email']);
-    $address = trim($_POST['address']);
+    
+    // New address fields from dropdowns and text input
+    $street_address = trim($_POST['street_address']);
+    $barangay = trim($_POST['barangay']);
+    $city = trim($_POST['city']);
+    $province = trim($_POST['province']);
+    $region = trim($_POST['region']);
+
     $cart_data = json_decode($_POST['cart_data'], true);
     $error = '';
 
-    if (empty($name) || empty($email) || empty($address) || empty($cart_data)) {
-        $error = "Please fill in all fields and make sure your cart is not empty.";
+    // Construct full address and validate all parts
+    $full_address = implode(', ', array_filter([$street_address, $barangay, $city, $province, $region]));
+
+    if (empty($name) || empty($email) || empty($street_address) || empty($barangay) || empty($city) || empty($province) || empty($region) || empty($cart_data)) {
+        $error = "Please fill in all fields, including the complete address, and make sure your cart is not empty.";
     } elseif (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
         $error = "Please enter a valid email address.";
     } else {
@@ -40,7 +61,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['cart_data'])) {
             // Insert into orders table
             $sql_order = "INSERT INTO orders (customer_name, customer_email, customer_address, total_price) VALUES (?, ?, ?, ?)";
             $stmt_order = $conn->prepare($sql_order);
-            $stmt_order->bind_param("sssd", $name, $email, $address, $total_price);
+            $stmt_order->bind_param("sssd", $name, $email, $full_address, $total_price);
             $stmt_order->execute();
             $order_id = $stmt_order->insert_id;
 
@@ -58,6 +79,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['cart_data'])) {
 
             $conn->commit();
 
+            // --- Send Order to Pancake API ---
+            $order_data_for_pancake = [
+                'order_id' => $order_id,
+                'customer_name' => $name,
+                'customer_email' => $email,
+                'customer_address' => $full_address,
+                'items' => $cart_data,
+                'total' => $total_price
+            ];
+            // This function is defined below, before the HTML starts.
+            sendOrderToPancake($pancake_config, $order_data_for_pancake);
+
             $_SESSION['order_success_message'] = "Your order has been placed successfully! Your Order ID is #{$order_id}.";
             header("Location: order_success.php");
             exit;
@@ -66,6 +99,106 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['cart_data'])) {
             $conn->rollback();
             $error = "There was an error processing your order: " . $exception->getMessage() . ". Please try again.";
         }
+    }
+}
+?>
+<?php
+/**
+ * Sends a request to the Pancake API.
+ *
+ * @param string $method The HTTP method (e.g., 'GET', 'POST').
+ * @param string $endpoint The API endpoint (e.g., 'clients', 'invoices').
+ * @param array $config The Pancake configuration array.
+ * @param array|null $data The data to send with the request.
+ * @return array The decoded JSON response.
+ * @throws Exception If the API request fails.
+ */
+function pancakeApiRequest($method, $endpoint, $config, $data = null) {
+    $ch = curl_init();
+    $url = rtrim($config['api_url'], '/') . '/' . ltrim($endpoint, '/');
+
+    if ($method === 'GET' && $data) {
+        $url .= '?' . http_build_query($data);
+    }
+
+    curl_setopt($ch, CURLOPT_URL, $url);
+    curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+    curl_setopt($ch, CURLOPT_HTTPHEADER, [
+        'Content-Type: application/json',
+        'X-Pancake-API-Key: ' . $config['api_key']
+    ]);
+
+    if ($method === 'POST') {
+        curl_setopt($ch, CURLOPT_POST, true);
+        if ($data) {
+            curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode($data));
+        }
+    }
+
+    $response = curl_exec($ch);
+    $http_code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+    $error = curl_error($ch);
+    curl_close($ch);
+
+    if ($http_code >= 200 && $http_code < 300) {
+        return json_decode($response, true);
+    } else {
+        throw new Exception("Pancake API request failed with status {$http_code}. Endpoint: {$endpoint}. Response: {$response}. cURL Error: {$error}");
+    }
+}
+
+/**
+ * Creates a client and an invoice in Pancake from an order.
+ *
+ * @param array $config The Pancake configuration array.
+ * @param array $order_data The order details from the website.
+ */
+function sendOrderToPancake($config, $order_data) {
+    try {
+        // 1. Find client by email to avoid duplicates
+        $existing_clients = pancakeApiRequest('GET', 'clients', $config, ['email' => $order_data['customer_email']]);
+        
+        if (!empty($existing_clients) && isset($existing_clients[0]['id'])) {
+            $client_id = $existing_clients[0]['id'];
+        } else {
+            // 2. Client not found, so create a new one
+            $name_parts = explode(' ', $order_data['customer_name'], 2);
+            $first_name = $name_parts[0];
+            $last_name = $name_parts[1] ?? '';
+
+            $new_client_data = [
+                'first_name' => $first_name,
+                'last_name' => $last_name,
+                'email' => $order_data['customer_email'],
+                'address' => $order_data['customer_address']
+            ];
+            $new_client = pancakeApiRequest('POST', 'clients', $config, $new_client_data);
+            $client_id = $new_client['id'] ?? null;
+        }
+
+        if (empty($client_id)) {
+            throw new Exception("Could not find or create a client ID in Pancake.");
+        }
+
+        // 3. Prepare invoice items from the cart data
+        $invoice_items = [];
+        foreach ($order_data['items'] as $item) {
+            $invoice_items[] = [
+                'name' => $item['name'],
+                'quantity' => $item['quantity'],
+                'price' => $item['price'],
+                'description' => 'Product ID: ' . $item['id']
+            ];
+        }
+
+        // 4. Create the invoice in Pancake
+        $invoice_data = ['client_id' => $client_id, 'invoice_number' => 'COSMI-' . $order_data['order_id'], 'notes' => "Order from COSMI BEAUTII website. Local Order ID: #" . $order_data['order_id'], 'items' => $invoice_items];
+        pancakeApiRequest('POST', 'invoices', $config, $invoice_data);
+
+    } catch (Exception $e) {
+        // If the Pancake API fails, log the error but don't stop the customer.
+        // The order is already saved in your local database.
+        error_log("Pancake API Integration Error: " . $e->getMessage());
     }
 }
 ?>
@@ -78,14 +211,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['cart_data'])) {
     <link rel="stylesheet" href="style.css">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
     <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap" rel="stylesheet">
-    <style>
-        .checkout-layout { display: grid; grid-template-columns: 2fr 1fr; gap: 30px; }
-        .checkout-form label { display: block; margin-bottom: 8px; font-weight: 500; }
-        .summary-item { display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px; }
-        .summary-item-info { font-size: 0.9rem; }
-        .summary-item-info span { color: var(--text-muted); }
-        @media (max-width: 768px) { .checkout-layout { grid-template-columns: 1fr; } }
-    </style>
 </head>
 <body>
 
@@ -101,17 +226,36 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['cart_data'])) {
                         <p style="color: red; background: rgba(255,0,0,0.1); padding: 10px; border-radius: 5px; margin-bottom: 20px;"><?php echo htmlspecialchars($error); ?></p>
                     <?php endif; ?>
                     <form id="checkout-form" action="checkout.php" method="post">
-                        <div style="margin-bottom: 20px;"><label for="name">Full Name</label><input type="text" id="name" name="name" required style="width: 100%; padding: 10px;" value="<?php echo htmlspecialchars($user_name); ?>"></div>
-                        <div style="margin-bottom: 20px;"><label for="email">Email Address</label><input type="email" id="email" name="email" required style="width: 100%; padding: 10px;" value="<?php echo htmlspecialchars($user_email); ?>"></div>
-                        <div style="margin-bottom: 20px;"><label for="address">Shipping Address</label><textarea id="address" name="address" required style="width: 100%; padding: 10px; min-height: 100px;"></textarea></div>
+                        <div class="form-group"><label for="name">Full Name</label><input type="text" id="name" name="name" class="form-control" required value="<?php echo htmlspecialchars($user_name); ?>"></div>
+                        <div class="form-group"><label for="email">Email Address</label><input type="email" id="email" name="email" class="form-control" required value="<?php echo htmlspecialchars($user_email); ?>"></div>
+                        
+                        <!-- New Address Fields -->
+                        <div class="form-group">
+                            <label for="region">Region</label>
+                            <input type="text" id="region" name="region" class="form-control" required>
+                        </div>
+                        <div class="form-group">
+                            <label for="province">Province</label>
+                            <input type="text" id="province" name="province" class="form-control" required>
+                        </div>
+                        <div class="form-group">
+                            <label for="city">City/Municipality</label>
+                            <input type="text" id="city" name="city" class="form-control" required>
+                        </div>
+                        <div class="form-group">
+                            <label for="barangay">Barangay</label>
+                            <input type="text" id="barangay" name="barangay" class="form-control" required>
+                        </div>
+                        <div class="form-group"><label for="street-address">Street Address, Building, House No.</label><input type="text" id="street-address" name="street_address" class="form-control" required placeholder="e.g. 123 Rizal St."></div>
+
                         <input type="hidden" name="cart_data" id="cart-data-input">
-                        <button type="submit" class="btn-primary" style="width: 100%;">Place Order</button>
+                        <button type="submit" class="btn-primary" style="width: 100%; margin-top: 10px;">Place Order</button>
                     </form>
                 </div>
                 <div class="card checkout-summary">
                     <h3>Order Summary</h3>
-                    <div id="cart-summary-items"><p>Your cart is empty.</p></div>
-                    <div id="cart-summary-total" style="border-top: 1px solid var(--border-color); margin-top: 20px; padding-top: 20px; font-size: 1.5rem; font-weight: 600;">Total: ₱0.00</div>
+                    <div id="cart-summary-items"><p style="text-align: center; color: var(--text-muted);">Your cart is empty.</p></div>
+                    <div id="cart-summary-total"><span>Total:</span> <span>₱0.00</span></div>
                 </div>
             </div>
         </div>
@@ -128,20 +272,34 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['cart_data'])) {
             function renderSummary() {
                 cartSummaryContainer.innerHTML = '';
                 let total = 0;
+                const submitButton = checkoutForm.querySelector('button[type="submit"]');
+
                 if (cart.length === 0) {
-                    cartSummaryContainer.innerHTML = '<p>Your cart is empty.</p>';
-                    cartSummaryTotal.textContent = 'Total: ₱0.00';
+                    cartSummaryContainer.innerHTML = '<p style="text-align: center; color: var(--text-muted);">Your cart is empty.</p>';
+                    cartSummaryTotal.innerHTML = '<span>Total:</span> <span>₱0.00</span>';
+                    submitButton.disabled = true; // Disable form submission if cart is empty
                     return;
                 }
+
+                submitButton.disabled = false; // Enable form submission if cart has items
+
                 cart.forEach(item => {
                     const itemTotal = item.price * item.quantity;
                     total += itemTotal;
                     const summaryItem = document.createElement('div');
                     summaryItem.classList.add('summary-item');
-                    summaryItem.innerHTML = `<div class="summary-item-info">${item.name} <br><span>${item.quantity} x ₱${item.price.toFixed(2)}</span></div><strong>₱${itemTotal.toFixed(2)}</strong>`;
+                    const imageUrl = item.image ? `images/${item.image}` : 'images/placeholder.png';
+                    summaryItem.innerHTML = `
+                        <img src="${imageUrl}" alt="${item.name}" class="summary-item-img">
+                        <div class="summary-item-info">
+                            <h4>${item.name}</h4>
+                            <span>${item.quantity} x ₱${item.price.toFixed(2)}</span>
+                        </div>
+                        <strong class="summary-item-price">₱${itemTotal.toFixed(2)}</strong>
+                    `;
                     cartSummaryContainer.appendChild(summaryItem);
                 });
-                cartSummaryTotal.textContent = `Total: ₱${total.toFixed(2)}`;
+                cartSummaryTotal.innerHTML = `<span>Total:</span> <span>₱${total.toFixed(2)}</span>`;
             }
 
             checkoutForm.addEventListener('submit', (e) => {

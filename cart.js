@@ -55,6 +55,8 @@ document.addEventListener('DOMContentLoaded', () => {
     // Add to Cart functionality
     document.querySelectorAll('.add-to-cart-btn').forEach(button => {
         button.addEventListener('click', (event) => {
+            event.stopPropagation(); // Prevent this click from bubbling up to the document listener
+            event.preventDefault(); // Prevent any default button action (e.g., form submission)
             const productId = event.target.dataset.productId;
             const productName = event.target.dataset.productName;
             const productPrice = parseFloat(event.target.dataset.productPrice);
