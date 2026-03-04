@@ -38,6 +38,9 @@ $orders_result = $conn->query($orders_sql);
         <div class="admin-main">
             <div class="admin-header">
                 <h3><i class="fas fa-receipt"></i> Manage Orders</h3>
+                <div>
+                    <a href="download_orders.php" class="btn-primary" style="padding: 10px 20px; font-size: 0.9rem;"><i class="fas fa-file-pdf"></i> Download Detailed Report (PDF)</a>
+                </div>
             </div>
 
             <?php if ($orders_result->num_rows > 0): ?>

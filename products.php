@@ -1,4 +1,47 @@
-<?php session_start(); ?>
+<?php
+session_start();
+include 'db.php';
+
+// Fetch all categories for the filter menu
+$categories = [];
+$sql_categories = "SELECT * FROM categories ORDER BY name ASC";
+$categories_result = $conn->query($sql_categories);
+if ($categories_result) {
+    while ($row = $categories_result->fetch_assoc()) {
+        $categories[] = $row;
+    }
+}
+
+// Check for a category filter from the URL
+$category_filter = isset($_GET['category']) ? (int)$_GET['category'] : null;
+$category_name = 'All Products';
+
+// Base SQL query for products
+$sql_products = "SELECT p.*, pi.image_path AS primary_image 
+                 FROM products p 
+                 LEFT JOIN product_images pi ON p.id = pi.product_id AND pi.is_primary = 1
+                 ";
+
+// If a category is selected, modify the query and get the category name for the title
+if ($category_filter) {
+    // Find category name for the title
+    foreach ($categories as $cat) {
+        if ($cat['id'] == $category_filter) {
+            $category_name = $cat['name'];
+            break;
+        }
+    }
+    $sql_products .= " JOIN product_categories pc ON p.id = pc.product_id WHERE pc.category_id = ?";
+    $stmt = $conn->prepare($sql_products);
+    $stmt->bind_param("i", $category_filter);
+    $stmt->execute();
+    $products_result = $stmt->get_result();
+} else {
+    // No filter, get all products
+    $products_result = $conn->query($sql_products);
+}
+
+?>
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -6,9 +49,32 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Shop | COSMI BEAUTII</title>
     <link rel="stylesheet" href="style.css">
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
-    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="floating-cart.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    <style>
+        .category-filters {
+            text-align: center;
+            margin-bottom: 40px;
+            display: flex;
+            flex-wrap: wrap;
+            justify-content: center;
+            gap: 10px;
+        }
+        .category-filters a {
+            text-decoration: none;
+            color: var(--text-muted);
+            background: var(--card-bg);
+            padding: 10px 20px;
+            border-radius: 50px;
+            transition: all 0.3s;
+            border: 1px solid var(--border-color);
+        }
+        .category-filters a:hover, .category-filters a.active {
+            background: var(--accent);
+            color: var(--bg);
+            border-color: var(--accent);
+        }
+    </style>
 </head>
 <body>
 
@@ -17,10 +83,10 @@
             <div class="logo">COSMI<span>BEAUTII</span></div>
             <nav>
                 <ul class="nav-links">
-                    <li><a href="index.php#home">Home</a></li>
+                    <li><a href="index.php">Home</a></li>
                     <li><a href="index.php#featured">Featured</a></li>
                     <li><a href="index.php#about">About</a></li>
-                    <li><a href="products.php" class="active">Shop</a></li>
+                    <li><a href="products.php">Shop</a></li>
                     <?php if (isset($_SESSION['user_id'])): ?>
                         <li class="user-menu">
                             <div class="user-menu-toggle">
@@ -42,147 +108,39 @@
         </div>
     </header>
 
-    <section id="products" class="services" style="padding-top: 120px;">
+    <section id="products" style="padding-top: 120px;">
         <div class="container">
-            <h2 class="section-title">All Products</h2>
-            <div class="product-grid">
-                <?php
-                include 'db.php';
-                $sql = "SELECT * FROM products ORDER BY reg_date DESC";
-                $result = $conn->query($sql);
+            <h2 class="section-title"><?php echo htmlspecialchars($category_name); ?></h2>
 
-                if ($result->num_rows > 0) {
-                    while($row = $result->fetch_assoc()) {
-                ?>
-                <div class="card" data-id="<?php echo htmlspecialchars($row['id']); ?>">
-                    <img src="images/<?php echo htmlspecialchars($row['image']); ?>" alt="<?php echo htmlspecialchars($row['name']); ?>" class="product-image">
-                    <h3><?php echo htmlspecialchars($row['name']); ?></h3>
-                    <p class="product-description"><?php echo htmlspecialchars($row['description']); ?></p>
-                    <p class="product-price">₱<span><?php echo htmlspecialchars($row['price']); ?></span></p>
-                    <button class="add-to-cart-btn"
-                        data-product-id="<?php echo htmlspecialchars($row['id']); ?>"
-                        data-product-name="<?php echo htmlspecialchars($row['name']); ?>"
-                        data-product-price="<?php echo htmlspecialchars($row['price']); ?>"
-                        data-product-image="<?php echo htmlspecialchars($row['image']); ?>">
-                        Add to Cart</button>
-                </div>
-                <?php
-                    }
-                } else {
-                    echo "<p>No products available at the moment.</p>";
-                }
-                $conn->close();
-                ?>
+            <!-- Category Filters -->
+            <div class="category-filters">
+                <a href="products.php" class="<?php echo !$category_filter ? 'active' : ''; ?>">All</a>
+                <?php foreach ($categories as $category): ?>
+                    <a href="products.php?category=<?php echo $category['id']; ?>" class="<?php echo ($category_filter == $category['id']) ? 'active' : ''; ?>">
+                        <?php echo htmlspecialchars($category['name']); ?>
+                    </a>
+                <?php endforeach; ?>
+            </div>
+
+            <div class="product-grid">
+                <?php if ($products_result && $products_result->num_rows > 0): ?>
+                    <?php while($row = $products_result->fetch_assoc()): ?>
+                    <div class="card">
+                        <img src="images/<?php echo htmlspecialchars($row['primary_image'] ?? 'placeholder.png'); ?>" alt="<?php echo htmlspecialchars($row['name']); ?>">
+                        <h3><?php echo htmlspecialchars($row['name']); ?></h3>
+                        <p style="font-size: 1.2rem; font-weight: 600; color: var(--accent); margin-top: 10px;">₱<?php echo htmlspecialchars($row['price']); ?></p>
+                        <button class="add-to-cart-btn" data-product-id="<?php echo $row['id']; ?>" data-product-name="<?php echo htmlspecialchars($row['name']); ?>" data-product-price="<?php echo $row['price']; ?>" data-product-image="<?php echo htmlspecialchars($row['primary_image'] ?? 'placeholder.png'); ?>">Add to Cart</button>
+                    </div>
+                    <?php endwhile; ?>
+                <?php else: ?>
+                    <p style="grid-column: 1 / -1; text-align: center; color: var(--text-muted);">No products found in this category.</p>
+                <?php endif; ?>
             </div>
         </div>
     </section>
 
-
     <?php include 'floating_cart.php'; ?>
-
-
-    <footer class="footer">
-        <div class="container">
-            <div class="footer-grid">
-                <div class="footer-info">
-                    <h3>COSMI<span>BEAUTII</span></h3>
-                    <p>Elevating beauty with nature's finest ingredients.</p>
-                    <div class="footer-contact">
-                        <p><i class="fas fa-map-marker-alt"></i> #99 MH Del Pilar Street, Brgy Balite,, Rodriguez, Philippines, 1860</p>
-                        <p><i class="fas fa-envelope"></i>  wihiasiahrdepartment@gmail.com</p>
-                        <p><i class="fas fa-phone"></i>  02-7001-2508</p>
-                    </div>
-                </div>
-                <div class="footer-links">
-                    <h4>Quick Links</h4>
-                    <ul>
-                        <li><a href="index.php#home">Home</a></li>
-                        <li><a href="index.php#featured">Featured</a></li>
-                        <li><a href="index.php#about">About</a></li>
-                        <li><a href="products.php">Shop</a></li>
-                        <li><a href="privacy_policy.php">Privacy Policy</a></li>
-                        <li><a href="terms_of_service.php">Terms of Service</a></li>
-                    </ul>
-                </div>
-                <div class="footer-socials">
-                    <h4>Follow Us</h4>
-                    <a href="#"><i class="fab fa-facebook"></i></a>
-                    <a href="#"><i class="fab fa-github"></i></a>
-                    <a href="#"><i class="fab fa-linkedin"></i></a>
-                </div>
-            </div>
-            <div class="footer-bottom">
-                <p>&copy; <?php echo date("2026"); ?> COSMI BEAUTII. All rights reserved.</p>
-            </div>
-        </div>
-    </footer>
-
     <script src="cart.js"></script>
-    <script>
-        document.addEventListener('DOMContentLoaded', () => {
-            document.querySelectorAll('.edit-btn').forEach(button => {
-                button.addEventListener('click', () => {
-                    const card = button.closest('.card');
-                    card.querySelector('h3').contentEditable = true;
-                    card.querySelector('p').contentEditable = true;
-                    card.querySelector('span').contentEditable = true;
-                    button.style.display = 'none';
-                    card.querySelector('.save-btn').style.display = 'inline-block';
-                });
-            });
 
-            document.querySelectorAll('.save-btn').forEach(button => {
-                button.addEventListener('click', () => {
-                    const card = button.closest('.card');
-                    const id = card.dataset.id;
-                    const name = card.querySelector('h3').innerText;
-                    const description = card.querySelector('p').innerText;
-                    const price = card.querySelector('span').innerText;
-
-                    const formData = new FormData();
-                    formData.append('id', id);
-                    formData.append('name', name);
-                    formData.append('description', description);
-                    formData.append('price', price);
-
-                    fetch('save_product.php', {
-                        method: 'POST',
-                        body: formData
-                    })
-                    .then(response => response.text())
-                    .then(data => {
-                        console.log(data);
-                        card.querySelector('h3').contentEditable = false;
-                        card.querySelector('p').contentEditable = false;
-                        card.querySelector('span').contentEditable = false;
-                        button.style.display = 'none';
-                        card.querySelector('.edit-btn').style.display = 'inline-block';
-                    });
-                });
-            });
-
-            document.querySelectorAll('.delete-btn').forEach(button => {
-                button.addEventListener('click', () => {
-                    if(confirm('Are you sure you want to delete this product?')){
-                        const card = button.closest('.card');
-                        const id = card.dataset.id;
-
-                        const formData = new FormData();
-                        formData.append('id', id);
-
-                        fetch('delete_product.php', {
-                            method: 'POST',
-                            body: formData
-                        })
-                        .then(response => response.text())
-                        .then(data => {
-                            console.log(data);
-                            card.remove();
-                        });
-                    }
-                });
-            });
-        });
-    </script>
 </body>
 </html>

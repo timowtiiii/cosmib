@@ -58,15 +58,18 @@
                 <div class="featured-carousel-track">
                 <?php
                 include 'db.php';
-                // Changed LIMIT from 3 to 6 for a more meaningful carousel
-                $sql = "SELECT * FROM products ORDER BY reg_date DESC LIMIT 6";
+                // Fetch products with their primary image
+                $sql = "SELECT p.*, pi.image_path AS primary_image 
+                        FROM products p 
+                        LEFT JOIN product_images pi ON p.id = pi.product_id AND pi.is_primary = 1 
+                        ORDER BY p.reg_date DESC LIMIT 8";
                 $result = $conn->query($sql);
 
                 if ($result->num_rows > 0) {
                     while($row = $result->fetch_assoc()) {
                 ?>
                 <div class="card featured-carousel-slide" data-id="<?php echo $row['id']; ?>">
-                    <img src="images/<?php echo htmlspecialchars($row['image']); ?>" alt="<?php echo htmlspecialchars($row['name']); ?>" class="product-image">
+                    <img src="images/<?php echo htmlspecialchars($row['primary_image'] ?? 'placeholder.png'); ?>" alt="<?php echo htmlspecialchars($row['name']); ?>" class="product-image">
                     <h3><?php echo htmlspecialchars($row['name']); ?></h3>
                     <p class="product-description"><?php echo htmlspecialchars($row['description']); ?></p>
                     <p class="product-price">₱<span><?php echo htmlspecialchars($row['price']); ?></span></p>
@@ -74,7 +77,7 @@
                         data-product-id="<?php echo htmlspecialchars($row['id']); ?>"
                         data-product-name="<?php echo htmlspecialchars($row['name']); ?>"
                         data-product-price="<?php echo htmlspecialchars($row['price']); ?>"
-                        data-product-image="<?php echo htmlspecialchars($row['image']); ?>">
+                        data-product-image="<?php echo htmlspecialchars($row['primary_image'] ?? 'placeholder.png'); ?>">
                         Add to Cart</button>
                 </div>
                 <?php
