@@ -78,9 +78,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['cart_data'])) {
             // --- End Stock Validation ---
 
             // Insert into orders table
-            $sql_order = "INSERT INTO orders (customer_name, customer_email, customer_address, total_price) VALUES (?, ?, ?, ?)";
+            $status = 'Pending'; // Default status for new orders
+            $sql_order = "INSERT INTO orders (customer_name, customer_email, customer_address, total_price, status) VALUES (?, ?, ?, ?, ?)";
             $stmt_order = $conn->prepare($sql_order);
-            $stmt_order->bind_param("sssd", $name, $email, $full_address, $total_price);
+            $stmt_order->bind_param("sssds", $name, $email, $full_address, $total_price, $status);
             $stmt_order->execute();
             $order_id = $stmt_order->insert_id;
 

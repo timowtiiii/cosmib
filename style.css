@@ -977,3 +977,68 @@ select.form-control:disabled {
         padding: 0 10px; /* Add some padding for scrollable content */
     }
 }
+
+/* Date Range Picker Custom Styles */
+.daterangepicker {
+    background-color: var(--card-bg) !important;
+    border: 1px solid var(--border-color) !important;
+    color: var(--text);
+    font-family: 'Poppins', sans-serif;
+}
+.daterangepicker .ranges li {
+    background-color: var(--card-bg);
+    border: 1px solid var(--border-color);
+    color: var(--text-muted);
+    border-radius: 4px;
+    margin-bottom: 8px;
+    transition: all 0.3s;
+}
+.daterangepicker .ranges li:hover, .daterangepicker .ranges li.active {
+    background-color: var(--accent) !important;
+    border: 1px solid var(--accent) !important;
+    color: var(--bg) !important;
+}
+.daterangepicker td.in-range {
+    background-color: rgba(255, 175, 0, 0.2) !important;
+    color: var(--text);
+    border-radius: 0 !important;
+}
+.daterangepicker td.active, .daterangepicker td.active:hover {
+    background-color: var(--accent) !important;
+    color: var(--bg) !important;
+    border-radius: 50% !important;
+}
+.daterangepicker .drp-buttons .btn {
+    background-color: var(--card-bg);
+    border: 1px solid var(--border-color);
+    color: var(--text);
+    font-weight: 500;
+}
+.daterangepicker .drp-buttons .btn-primary {
+    background-color: var(--accent);
+    border-color: var(--accent);
+    color: var(--bg);
+}
+.daterangepicker .drp-buttons .btn-primary:hover {
+    background-color: #ffc800;
+    border-color: #ffc800;
+}
+.daterangepicker th.month {
+    color: var(--accent);
+}
+.daterangepicker td.off, .daterangepicker td.off.in-range, .daterangepicker td.off.start-date, .daterangepicker td.off.end-date {
+    background-color: transparent !important;
+    color: #555 !important;
+    cursor: not-allowed;
+}
+.daterangepicker .calendar-table {
+    background-color: var(--card-bg) !important;
+    border: none;
+}
+.daterangepicker td.available:hover {
+    background: var(--bg);
+    border-radius: 50%;
+}
+.daterangepicker:after, .daterangepicker:before {
+    display: none !important; /* Hide default arrow, it's hard to style for dark theme */
+}
