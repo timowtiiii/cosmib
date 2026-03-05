@@ -31,24 +31,25 @@ $pancake_config = [
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['cart_data'])) {
     $name = trim($_POST['name']);
     $email = trim($_POST['email']);
+    $phone_number = trim($_POST['phone_number']);
     
     // New address fields from dropdowns and text input
     $street_address = trim($_POST['street_address']);
     $barangay = trim($_POST['barangay']);
     $city = trim($_POST['city']);
-    $province = trim($_POST['province']);
-    $region = trim($_POST['region']);
 
     $cart_data = json_decode($_POST['cart_data'], true);
     $error = '';
 
     // Construct full address and validate all parts
-    $full_address = implode(', ', array_filter([$street_address, $barangay, $city, $province, $region]));
+    $full_address = implode(', ', array_filter([$street_address, $barangay, $city]));
 
-    if (empty($name) || empty($email) || empty($street_address) || empty($barangay) || empty($city) || empty($province) || empty($region) || empty($cart_data)) {
+    if (empty($name) || empty($email) || empty($phone_number) || empty($street_address) || empty($barangay) || empty($city) || empty($cart_data)) {
         $error = "Please fill in all fields, including the complete address, and make sure your cart is not empty.";
     } elseif (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
         $error = "Please enter a valid email address.";
+    } elseif (!preg_match('/^(09|\+639)\d{9}$/', $phone_number)) {
+        $error = "Please enter a valid Philippine mobile number (e.g., 09171234567 or +639171234567).";
     } else {
         $total_price = 0;
         foreach ($cart_data as $item) {
@@ -79,9 +80,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['cart_data'])) {
 
             // Insert into orders table
             $status = 'Pending'; // Default status for new orders
-            $sql_order = "INSERT INTO orders (customer_name, customer_email, customer_address, total_price, status) VALUES (?, ?, ?, ?, ?)";
+            $sql_order = "INSERT INTO orders (customer_name, customer_email, customer_phone, customer_address, total_price, status) VALUES (?, ?, ?, ?, ?, ?)";
             $stmt_order = $conn->prepare($sql_order);
-            $stmt_order->bind_param("sssds", $name, $email, $full_address, $total_price, $status);
+            $stmt_order->bind_param("ssssds", $name, $email, $phone_number, $full_address, $total_price, $status);
             $stmt_order->execute();
             $order_id = $stmt_order->insert_id;
 
@@ -110,6 +111,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['cart_data'])) {
                 'order_id' => $order_id,
                 'customer_name' => $name,
                 'customer_email' => $email,
+                'customer_phone' => $phone_number,
                 'customer_address' => $full_address,
                 'items' => $cart_data,
                 'total' => $total_price
@@ -196,6 +198,7 @@ function sendOrderToPancake($config, $order_data) {
                 'first_name' => $first_name,
                 'last_name' => $last_name,
                 'email' => $order_data['customer_email'],
+                'phone' => $order_data['customer_phone'] ?? null,
                 'address' => $order_data['customer_address']
             ];
             $new_client = pancakeApiRequest('POST', 'clients', $config, $new_client_data);
@@ -254,16 +257,10 @@ function sendOrderToPancake($config, $order_data) {
                     <form id="checkout-form" action="checkout.php" method="post">
                         <div class="form-group"><label for="name">Full Name</label><input type="text" id="name" name="name" class="form-control" required value="<?php echo htmlspecialchars($user_name); ?>"></div>
                         <div class="form-group"><label for="email">Email Address</label><input type="email" id="email" name="email" class="form-control" required value="<?php echo htmlspecialchars($user_email); ?>"></div>
+                        <div class="form-group"><label for="phone_number">Phone Number</label><input type="tel" id="phone_number" name="phone_number" class="form-control" required placeholder="e.g. 09171234567"></div>
                         
                         <!-- New Address Fields -->
-                        <div class="form-group">
-                            <label for="region">Region</label>
-                            <input type="text" id="region" name="region" class="form-control" required>
-                        </div>
-                        <div class="form-group">
-                            <label for="province">Province</label>
-                            <input type="text" id="province" name="province" class="form-control" required>
-                        </div>
+                        <div class="form-group"><label for="street-address">Street Address, Building, House No.</label><input type="text" id="street-address" name="street_address" class="form-control" required placeholder="e.g. 123 Rizal St."></div>
                         <div class="form-group">
                             <label for="city">City/Municipality</label>
                             <input type="text" id="city" name="city" class="form-control" required>
@@ -272,7 +269,6 @@ function sendOrderToPancake($config, $order_data) {
                             <label for="barangay">Barangay</label>
                             <input type="text" id="barangay" name="barangay" class="form-control" required>
                         </div>
-                        <div class="form-group"><label for="street-address">Street Address, Building, House No.</label><input type="text" id="street-address" name="street_address" class="form-control" required placeholder="e.g. 123 Rizal St."></div>
 
                         <input type="hidden" name="cart_data" id="cart-data-input">
                         <button type="submit" class="btn-primary" style="width: 100%; margin-top: 10px;">Place Order</button>
@@ -287,6 +283,29 @@ function sendOrderToPancake($config, $order_data) {
         </div>
     </section>
 
+    <!-- Order Confirmation Modal -->
+    <div id="order-confirmation-modal" class="modal" style="display: none;">
+        <div class="modal-content" style="max-width: 550px;">
+            <div class="modal-header">
+                <h2>Confirm Your Order</h2>
+                <span class="close-btn" id="close-confirm-modal">&times;</span>
+            </div>
+            <div class="modal-body">
+                <p>Please review your order before confirming.</p>
+                <div id="confirm-summary-items" style="margin-top: 20px; max-height: 250px; overflow-y: auto; padding-right: 10px;">
+                    <!-- Order items will be injected here by JS -->
+                </div>
+                <div id="confirm-summary-total" style="border-top: 2px solid var(--accent); margin-top: 20px; padding-top: 20px; font-size: 1.5rem; font-weight: 600; display: flex; justify-content: space-between;">
+                    <!-- Total will be injected here -->
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button id="cancel-order-btn" class="btn-secondary" style="margin-top: 0; margin-right: 10px;">Cancel</button>
+                <button id="confirm-order-btn" class="btn-primary" style="margin-top: 0;">Confirm & Place Order</button>
+            </div>
+        </div>
+    </div>
+
     <script>
         document.addEventListener('DOMContentLoaded', () => {
             const cart = JSON.parse(localStorage.getItem('cart')) || [];
@@ -294,6 +313,12 @@ function sendOrderToPancake($config, $order_data) {
             const cartSummaryTotal = document.getElementById('cart-summary-total');
             const cartDataInput = document.getElementById('cart-data-input');
             const checkoutForm = document.getElementById('checkout-form');
+            const confirmationModal = document.getElementById('order-confirmation-modal');
+            const closeConfirmModalBtn = document.getElementById('close-confirm-modal');
+            const cancelOrderBtn = document.getElementById('cancel-order-btn');
+            const confirmOrderBtn = document.getElementById('confirm-order-btn');
+            const confirmItemsContainer = document.getElementById('confirm-summary-items');
+            const confirmTotalContainer = document.getElementById('confirm-summary-total');
 
             function renderSummary() {
                 cartSummaryContainer.innerHTML = '';
@@ -329,7 +354,32 @@ function sendOrderToPancake($config, $order_data) {
             }
 
             checkoutForm.addEventListener('submit', (e) => {
+                e.preventDefault(); // Prevent form submission
+
+                // Populate the modal with current summary
+                confirmItemsContainer.innerHTML = cartSummaryContainer.innerHTML;
+                confirmTotalContainer.innerHTML = cartSummaryTotal.innerHTML;
+
+                // Show the modal
+                confirmationModal.style.display = 'block';
+            });
+
+            // Event listeners for the new modal
+            function hideModal() {
+                confirmationModal.style.display = 'none';
+            }
+
+            closeConfirmModalBtn.addEventListener('click', hideModal);
+            cancelOrderBtn.addEventListener('click', hideModal);
+            window.addEventListener('click', (event) => {
+                if (event.target == confirmationModal) {
+                    hideModal();
+                }
+            });
+
+            confirmOrderBtn.addEventListener('click', () => {
                 cartDataInput.value = JSON.stringify(cart);
+                checkoutForm.submit();
             });
 
             renderSummary();

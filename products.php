@@ -55,18 +55,22 @@ if ($categories_result) {
             <h2 class="section-title">Our Products</h2>
 
             <div class="category-navigation">
-                <ul class="category-nav-list">
-                    <?php foreach ($categories as $category): ?>
-                        <li><a href="#category-<?php echo $category['id']; ?>" class="category-nav-link"><?php echo htmlspecialchars($category['name']); ?></a></li>
-                    <?php endforeach; ?>
-                    <?php
-                    // Check if there are any uncategorized products to display the link
-                    $uncategorized_check_sql = "SELECT COUNT(*) FROM products p LEFT JOIN product_categories pc ON p.id = pc.product_id WHERE pc.product_id IS NULL";
-                    $uncategorized_count = $conn->query($uncategorized_check_sql)->fetch_row()[0];
-                    if ($uncategorized_count > 0): ?>
-                        <li><a href="#category-uncategorized" class="category-nav-link">Uncategorized</a></li>
-                    <?php endif; ?>
-                </ul>
+                <button class="category-nav-arrow prev" id="category-nav-prev"><i class="fas fa-chevron-left"></i></button>
+                <div class="category-nav-wrapper">
+                    <ul class="category-nav-list">
+                        <?php foreach ($categories as $category): ?>
+                            <li><a href="#category-<?php echo $category['id']; ?>" class="category-nav-link"><?php echo htmlspecialchars($category['name']); ?></a></li>
+                        <?php endforeach; ?>
+                        <?php
+                        // Check if there are any uncategorized products to display the link
+                        $uncategorized_check_sql = "SELECT COUNT(*) FROM products p LEFT JOIN product_categories pc ON p.id = pc.product_id WHERE pc.product_id IS NULL";
+                        $uncategorized_count = $conn->query($uncategorized_check_sql)->fetch_row()[0];
+                        if ($uncategorized_count > 0): ?>
+                            <li><a href="#category-uncategorized" class="category-nav-link">Uncategorized</a></li>
+                        <?php endif; ?>
+                    </ul>
+                </div>
+                <button class="category-nav-arrow next" id="category-nav-next"><i class="fas fa-chevron-right"></i></button>
             </div>
 
             <?php if (empty($categories)): ?>
@@ -190,5 +194,40 @@ if ($categories_result) {
     </div>
 
     <script src="cart.js"></script>
+    <script>
+    document.addEventListener('DOMContentLoaded', () => {
+        // --- Category Navigation Carousel ---
+        const navContainer = document.querySelector('.category-navigation');
+        if (navContainer) {
+            const prevBtn = document.getElementById('category-nav-prev');
+            const nextBtn = document.getElementById('category-nav-next');
+            const listWrapper = document.querySelector('.category-nav-wrapper');
+            const list = document.querySelector('.category-nav-list');
+
+            const checkArrows = () => {
+                const isScrollable = list.scrollWidth > listWrapper.clientWidth;
+                navContainer.classList.toggle('is-scrollable', isScrollable);
+
+                if (isScrollable) {
+                    const maxScrollLeft = list.scrollWidth - listWrapper.clientWidth;
+                    prevBtn.disabled = listWrapper.scrollLeft <= 0;
+                    nextBtn.disabled = listWrapper.scrollLeft >= maxScrollLeft - 1;
+                }
+            };
+
+            nextBtn.addEventListener('click', () => {
+                listWrapper.scrollBy({ left: 300, behavior: 'smooth' });
+            });
+
+            prevBtn.addEventListener('click', () => {
+                listWrapper.scrollBy({ left: -300, behavior: 'smooth' });
+            });
+
+            listWrapper.addEventListener('scroll', checkArrows);
+            window.addEventListener('resize', checkArrows);
+            checkArrows();
+        }
+    });
+    </script>
 </body>
 </html>
