@@ -58,6 +58,25 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['cart_data'])) {
         $conn->begin_transaction();
 
         try {
+            // --- Stock Validation ---
+            $sql_stock_check = "SELECT stock FROM products WHERE id = ?";
+            $stmt_stock_check = $conn->prepare($sql_stock_check);
+            foreach ($cart_data as $item) {
+                $product_id = (int)$item['id'];
+                $quantity_in_cart = (int)$item['quantity'];
+
+                $stmt_stock_check->bind_param("i", $product_id);
+                $stmt_stock_check->execute();
+                $stock_result = $stmt_stock_check->get_result()->fetch_assoc();
+
+                if (!$stock_result || $stock_result['stock'] < $quantity_in_cart) {
+                    $product_name = htmlspecialchars($item['name']);
+                    $available_stock = $stock_result['stock'] ?? 0;
+                    throw new Exception("Not enough stock for '{$product_name}'. Only {$available_stock} available, but you have {$quantity_in_cart} in your cart.");
+                }
+            }
+            // --- End Stock Validation ---
+
             // Insert into orders table
             $sql_order = "INSERT INTO orders (customer_name, customer_email, customer_address, total_price) VALUES (?, ?, ?, ?)";
             $stmt_order = $conn->prepare($sql_order);
@@ -68,6 +87,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['cart_data'])) {
             // Insert into order_items table
             $sql_items = "INSERT INTO order_items (order_id, product_id, quantity, price) VALUES (?, ?, ?, ?)";
             $stmt_items = $conn->prepare($sql_items);
+            $sql_update_stock = "UPDATE products SET stock = stock - ? WHERE id = ?";
+            $stmt_update_stock = $conn->prepare($sql_update_stock);
 
             foreach ($cart_data as $item) {
                 $product_id = (int)$item['id'];
@@ -75,6 +96,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['cart_data'])) {
                 $price = (float)$item['price'];
                 $stmt_items->bind_param("iiid", $order_id, $product_id, $quantity, $price);
                 $stmt_items->execute();
+
+                // Decrement stock
+                $stmt_update_stock->bind_param("ii", $quantity, $product_id);
+                $stmt_update_stock->execute();
             }
 
             $conn->commit();
@@ -94,10 +119,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['cart_data'])) {
             $_SESSION['order_success_message'] = "Your order has been placed successfully! Your Order ID is #{$order_id}.";
             header("Location: order_success.php");
             exit;
-
-        } catch (mysqli_sql_exception $exception) {
+        
+        } catch (Exception $exception) { // Catch generic Exception to handle our custom stock error
             $conn->rollback();
-            $error = "There was an error processing your order: " . $exception->getMessage() . ". Please try again.";
+            $error = "Error: " . $exception->getMessage() . " Please adjust your cart and try again.";
         }
     }
 }

@@ -5,29 +5,86 @@ include 'db.php';
 if ($_SERVER["REQUEST_METHOD"] == "POST") {
     $username = $_POST['username'];
     $password = $_POST['password'];
+    $error = "Invalid credentials or not an admin account."; // Default error
 
-    $sql = "SELECT id, password FROM admin WHERE username = ?";
-    $stmt = $conn->prepare($sql);
-    $stmt->bind_param("s", $username);
-    $stmt->execute();
-    $result = $stmt->get_result();
+    // --- Method 1: Try logging in from 'users' table (preferred) ---
+    $sql_user = "SELECT id, password, role FROM users WHERE username = ? AND role = 'admin'";
+    $stmt_user = $conn->prepare($sql_user);
+    $stmt_user->bind_param("s", $username);
+    $stmt_user->execute();
+    $result_user = $stmt_user->get_result();
 
-    if ($result->num_rows > 0) {
-        $row = $result->fetch_assoc();
-        if (password_verify($password, $row['password'])) {
-            // Regenerate session ID to prevent session fixation and clear old session data
+    if ($user_row = $result_user->fetch_assoc()) {
+        if (password_verify($password, $user_row['password'])) {
+            // Success with modern method
             session_regenerate_id(true);
-            $_SESSION = array(); // Clear all session variables
-
+            $_SESSION = array();
             $_SESSION['admin_loggedin'] = true;
-            $_SESSION['admin_id'] = $row['id'];
+            $_SESSION['user_id'] = $user_row['id'];
             $_SESSION['username'] = $username;
             header("location: admin_dashboard.php");
-        } else {
-            $error = "Invalid password";
+            exit;
         }
-    } else {
-        $error = "No account found with that username";
+    }
+    $stmt_user->close();
+
+    // --- Method 2: Fallback to legacy 'admin' table ---
+    // This part only runs if the first method fails.
+    $table_exists_res = $conn->query("SHOW TABLES LIKE 'admin'");
+    if ($table_exists_res && $table_exists_res->num_rows > 0) {
+        $sql_admin = "SELECT password FROM admin WHERE username = ?";
+        $stmt_admin = $conn->prepare($sql_admin);
+        $stmt_admin->bind_param("s", $username);
+        $stmt_admin->execute();
+        $result_admin = $stmt_admin->get_result();
+
+        if ($admin_row = $result_admin->fetch_assoc()) {
+            if (password_verify($password, $admin_row['password'])) {
+                // Legacy admin authenticated. Now, find their corresponding user_id.
+                $sql_get_id = "SELECT id FROM users WHERE username = ?";
+                $stmt_get_id = $conn->prepare($sql_get_id);
+                $stmt_get_id->bind_param("s", $username);
+                $stmt_get_id->execute();
+                $result_get_id = $stmt_get_id->get_result();
+                
+                if ($user_for_admin = $result_get_id->fetch_assoc()) {
+                    // Success with legacy method, and we found a corresponding user entry.
+                    session_regenerate_id(true);
+                    $_SESSION = array();
+                    $_SESSION['admin_loggedin'] = true;
+                    $_SESSION['user_id'] = $user_for_admin['id']; // Use the ID from the 'users' table
+                    $_SESSION['username'] = $username;
+                    header("location: admin_dashboard.php");
+                    exit;
+                } else {
+                    // Self-healing: No corresponding user found. Create one to migrate the legacy admin.
+                    $placeholder_email = $username . '@placeholder.user'; // A placeholder email
+                    $password_hash_from_admin = $admin_row['password']; // The hash from the 'admin' table
+                    $role = 'admin';
+
+                    $stmt_create_user = $conn->prepare("INSERT INTO users (username, email, password, role) VALUES (?, ?, ?, ?)");
+                    $stmt_create_user->bind_param("ssss", $username, $placeholder_email, $password_hash_from_admin, $role);
+                    
+                    if ($stmt_create_user->execute()) {
+                        $new_user_id = $stmt_create_user->insert_id;
+                        
+                        // Now log the user in with the newly created user account
+                        session_regenerate_id(true);
+                        $_SESSION = array();
+                        $_SESSION['admin_loggedin'] = true;
+                        $_SESSION['user_id'] = $new_user_id;
+                        $_SESSION['username'] = $username;
+                        header("location: admin_dashboard.php");
+                        exit;
+                    } else {
+                        $error = "Authentication successful, but failed to create a corresponding user account. Please contact support.";
+                    }
+                    $stmt_create_user->close();
+                }
+                $stmt_get_id->close();
+            }
+        }
+        $stmt_admin->close();
     }
 }
 ?>

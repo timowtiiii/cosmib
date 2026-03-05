@@ -15,53 +15,67 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
         $sql = "INSERT INTO categories (name) VALUES (?)";
         $stmt = $conn->prepare($sql);
         $stmt->bind_param("s", $name);
-        if ($stmt->execute()) {
-            header("Location: edit_products.php");
-            exit;
-        } else {
-            // Handle error, e.g., category name already exists
-            echo "Error adding category: " . $stmt->error;
+        try {
+            $stmt->execute();
+            $_SESSION['message'] = ['type' => 'success', 'text' => 'Category added successfully.'];
+        } catch (mysqli_sql_exception $e) {
+            if ($e->getCode() == 1062) { // Duplicate entry
+                $_SESSION['message'] = ['type' => 'error', 'text' => 'Error: A category with that name already exists.'];
+            } else {
+                $_SESSION['message'] = ['type' => 'error', 'text' => 'A database error occurred while adding the category.'];
+            }
         }
+        header("Location: edit_products.php");
+        exit;
     } elseif (isset($_POST['update_category'])) {
         $id = $_POST['id'];
         $name = $_POST['name'];
         $sql = "UPDATE categories SET name = ? WHERE id = ?";
         $stmt = $conn->prepare($sql);
         $stmt->bind_param("si", $name, $id);
-        if ($stmt->execute()) {
-            header("Location: edit_products.php");
-            exit;
-        } else {
-            echo "Error updating category: " . $stmt->error;
+        try {
+            $stmt->execute();
+            $_SESSION['message'] = ['type' => 'success', 'text' => 'Category updated successfully.'];
+        } catch (mysqli_sql_exception $e) {
+            if ($e->getCode() == 1062) { // Duplicate entry
+                $_SESSION['message'] = ['type' => 'error', 'text' => 'Error: A category with that name already exists.'];
+            } else {
+                $_SESSION['message'] = ['type' => 'error', 'text' => 'A database error occurred while updating the category.'];
+            }
         }
+        header("Location: edit_products.php");
+        exit;
     } elseif (isset($_POST['delete_category'])) {
         $id = $_POST['id'];
-        // The foreign key in `products` is set to ON DELETE SET NULL,
-        // so products in this category will become uncategorized.
         $sql = "DELETE FROM categories WHERE id = ?";
         $stmt = $conn->prepare($sql);
         $stmt->bind_param("i", $id);
-        if ($stmt->execute()) {
-            header("Location: edit_products.php");
-            exit;
-        } else {
-            echo "Error deleting category: " . $stmt->error;
+        try {
+            $stmt->execute();
+            $_SESSION['message'] = ['type' => 'success', 'text' => 'Category deleted successfully.'];
+        } catch (mysqli_sql_exception $e) {
+            $_SESSION['message'] = ['type' => 'error', 'text' => 'Error: Could not delete category. It might still be in use by some products.'];
         }
+        header("Location: edit_products.php");
+        exit;
     }
     // --- PRODUCT MANAGEMENT ---
     elseif (isset($_POST['add_product'])) {
         $name = $_POST['name'];
         $description = $_POST['description'];
         $price = $_POST['price'];
+        $stock = $_POST['stock'];
         $category_ids = $_POST['category_ids'] ?? [];
+        // Filter out empty values that might come from an optional dropdown
+        $category_ids = array_filter($category_ids);
         $image_files = $_FILES['images'];
 
         $conn->begin_transaction();
         try {
             // 1. Insert product
-            $sql_prod = "INSERT INTO products (name, description, price) VALUES (?, ?, ?)";
+            $sql_prod = "INSERT INTO products (name, description, price, stock) VALUES (?, ?, ?, ?)";
             $stmt_prod = $conn->prepare($sql_prod);
-            $stmt_prod->bind_param("ssd", $name, $description, $price);
+            $stmt_prod->bind_param("ssdi", $name, $description, $price, $stock);
             $stmt_prod->execute();
             $product_id = $stmt_prod->insert_id;
 
@@ -102,15 +116,16 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
         $name = $_POST['name'];
         $description = $_POST['description'];
         $price = $_POST['price'];
+        $stock = $_POST['stock'];
         $category_ids = $_POST['category_ids'] ?? [];
         $new_images = $_FILES['new_images'];
 
         $conn->begin_transaction();
         try {
             // 1. Update basic product info
-            $sql = "UPDATE products SET name=?, description=?, price=? WHERE id=?";
+            $sql = "UPDATE products SET name=?, description=?, price=?, stock=? WHERE id=?";
             $stmt = $conn->prepare($sql);
-            $stmt->bind_param("ssdi", $name, $description, $price, $id);
+            $stmt->bind_param("ssdii", $name, $description, $price, $stock, $id);
             $stmt->execute();
 
             // 2. Update categories
@@ -181,7 +196,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
 
             if ($is_ajax) {
                 // Fetch the updated product data to send back to the client
-                $sql_updated = "SELECT p.*, pi.image_path AS primary_image, 
+                $sql_updated = "SELECT p.*, p.stock, pi.image_path AS primary_image, 
                                        GROUP_CONCAT(DISTINCT c.name ORDER BY c.name SEPARATOR ', ') AS category_names,
                                        GROUP_CONCAT(DISTINCT c.id ORDER BY c.name) AS category_ids
                                 FROM products p 
@@ -266,7 +281,7 @@ if ($images_result) {
 }
 
 // Fetch products with their category names and primary image
-$sql = "SELECT p.*, pi.image_path AS primary_image, 
+$sql = "SELECT p.*, p.stock, pi.image_path AS primary_image, 
                GROUP_CONCAT(DISTINCT c.name ORDER BY c.name SEPARATOR ', ') AS category_names,
                GROUP_CONCAT(DISTINCT c.id ORDER BY c.name) AS category_ids
         FROM products p 
@@ -289,6 +304,7 @@ $result = $conn->query($sql);
         .image-manager-item img { width: 100%; height: 80px; object-fit: cover; border-radius: 5px; margin-bottom: 10px; }
         .image-manager-item label { font-size: 0.8rem; display: block; margin-top: 5px; cursor: pointer; }
         .image-manager-item input { vertical-align: middle; }
+        .product-stock { font-size: 0.9rem; font-weight: 500; color: var(--text-muted); }
         .checkbox-group {
             height: 120px; overflow-y: auto; border: 1px solid var(--border-color); padding: 10px; border-radius: 5px; background: #333;
         }
@@ -317,85 +333,65 @@ $result = $conn->query($sql);
         <div class="admin-main">
             <div class="admin-header">
                 <h3>Manage Products</h3>
-            </div>
-
-            <div class="card" style="margin-bottom: 30px;">
-                <h3 style="text-align: left; margin-bottom: 20px;">Add New Product</h3>
-                <form action="" method="post" enctype="multipart/form-data">
-                    <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 20px;">
-                        <input type="text" name="name" placeholder="Product Name" required style="padding: 10px;">
-                        <input type="number" step="0.01" name="price" placeholder="Price" required style="padding: 10px;">
-                        <div class="checkbox-group">
-                            <?php if(empty($categories)): ?>
-                                <p style="color: var(--text-muted);">Add a category first.</p>
-                            <?php else: ?>
-                                <?php foreach($categories as $category): ?>
-                                    <label>
-                                        <input type="checkbox" name="category_ids[]" value="<?php echo $category['id']; ?>">
-                                        <?php echo htmlspecialchars($category['name']); ?>
-                                    </label>
-                                <?php endforeach; ?>
-                            <?php endif; ?>
-                        </div>
-                    </div>
-                    <textarea name="description" placeholder="Product Description" required style="width: 100%; padding: 10px; margin-top: 20px;"></textarea>
-                    <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 20px;">
-                        <input type="file" name="images[]" multiple required>
-                        <button type="submit" name="add_product" class="btn-primary" style="margin-top: 0;">Add Product</button>
-                    </div>
-                </form>
-            </div>
-
-            <!-- Manage Categories Section -->
-            <div class="card" style="margin-bottom: 30px;">
-                <h3 style="text-align: left; margin-bottom: 20px;">Manage Categories</h3>
-                <form action="edit_products.php" method="post" style="display: flex; gap: 10px; margin-bottom: 20px;">
-                    <input type="text" name="name" placeholder="New Category Name" required style="flex-grow: 1; padding: 10px;">
-                    <button type="submit" name="add_category" class="btn-primary" style="margin-top: 0;">Add Category</button>
-                </form>
-
-                <div class="orders-table-container" style="max-height: 300px; overflow-y: auto;">
-                    <table class="orders-table">
-                        <thead>
-                            <tr>
-                                <th>Category Name</th>
-                                <th style="width: 150px; text-align: right;">Actions</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            <?php if (empty($categories)): ?>
-                                <tr><td colspan="2">No categories found.</td></tr>
-                            <?php else: ?>
-                                <?php foreach($categories as $category): ?>
-                                <tr data-id="<?php echo $category['id']; ?>" data-name="<?php echo htmlspecialchars($category['name']); ?>">
-                                    <td><?php echo htmlspecialchars($category['name']); ?></td>
-                                    <td style="text-align: right;">
-                                        <button class="edit-category-btn" style="background: var(--accent); color: var(--bg); border: none; padding: 5px 10px; border-radius: 5px; cursor: pointer; margin-right: 5px;"><i class="fas fa-edit"></i></button>
-                                        <form action="edit_products.php" method="post" onsubmit="return confirm('Are you sure you want to delete this category? Products in this category will become uncategorized.');" style="display: inline;">
-                                            <input type="hidden" name="id" value="<?php echo $category['id']; ?>">
-                                            <button type="submit" name="delete_category" class="delete-product-btn"><i class="fas fa-trash"></i></button>
-                                        </form>
-                                    </td>
-                                </tr>
-                                <?php endforeach; ?>
-                            <?php endif; ?>
-                        </tbody>
-                    </table>
+                <div>
+                    <button id="add-product-btn" class="btn-primary" style="margin-top: 0; padding: 10px 25px; font-size: 0.9rem; margin-right: 10px;">
+                        <i class="fas fa-plus"></i> Add Product
+                    </button>
+                    <button id="manage-categories-btn" class="btn-secondary" style="margin-top: 0; padding: 10px 25px; font-size: 0.9rem;">
+                        <i class="fas fa-tags"></i> Manage Categories
+                    </button>
                 </div>
             </div>
 
+            <?php
+            if (isset($_SESSION['message'])) {
+                $message = $_SESSION['message'];
+                unset($_SESSION['message']); // Clear the message after displaying
+                if ($message['type'] === 'error') {
+                    // Use existing error-message class from style.css
+                    echo '<div class="error-message" style="margin-bottom: 20px;">' . htmlspecialchars($message['text']) . '</div>';
+                } else {
+                    // Use inline style for success message
+                    echo '<div style="color: #28a745; background: rgba(40, 167, 69, 0.1); border: 1px solid rgba(40, 167, 69, 0.3); text-align: center; margin-bottom: 20px; padding: 10px; border-radius: 5px;">' . htmlspecialchars($message['text']) . '</div>';
+                }
+            }
+            ?>
+
+            <div style="margin-bottom: 20px; max-width: 500px;">
+                <label for="product-search" style="display: none;">Search Products</label> <!-- Hidden label for accessibility -->
+                <input type="search" id="product-search" class="form-control" placeholder="Search products by name...">
+            </div>
+
             <div class="grid">
-                <?php while($row = $result->fetch_assoc()): ?>
+                <?php if ($result->num_rows === 0): ?>
+                    <p style="color: var(--text-muted); grid-column: 1 / -1; text-align: center; padding: 40px 0;">No products found. Click 'Add Product' to get started.</p>
+                <?php endif; ?>
+                <?php while($row = $result->fetch_assoc()): 
+                    $stock = $row['stock'];
+                    $stock_indicator = '';
+                    $stock_class = '';
+                    if ($stock <= 0) {
+                        $stock_class = 'stock-out';
+                        $stock_indicator = '<div class="stock-indicator out-of-stock">Out of Stock</div>';
+                    } elseif ($stock <= 10) { // Low stock threshold
+                        $stock_class = 'stock-low';
+                        $stock_indicator = '<div class="stock-indicator low-stock">Low Stock</div>';
+                    }
+                ?>
                 <div class="card" 
+                     id="product-<?php echo $row['id']; ?>"
                      data-id="<?php echo $row['id']; ?>"
                      data-name="<?php echo htmlspecialchars($row['name']); ?>"
                      data-description="<?php echo htmlspecialchars($row['description']); ?>"
                      data-price="<?php echo htmlspecialchars($row['price']); ?>"
+                     data-stock="<?php echo htmlspecialchars($row['stock']); ?>"
                      data-category-ids="<?php echo htmlspecialchars($row['category_ids']); ?>">
+                    <?php echo $stock_indicator; ?>
                     <img src="images/<?php echo htmlspecialchars($row['primary_image'] ?? 'placeholder.png'); ?>" alt="<?php echo htmlspecialchars($row['name']); ?>" class="product-image">
                     <h3 class="product-name"><?php echo htmlspecialchars($row['name']); ?></h3>
                     <p class="product-categories" style="color: var(--text-muted); font-size: 0.9rem; margin-bottom: 10px;"><?php echo htmlspecialchars($row['category_names'] ?? 'Uncategorized'); ?></p>
                     <p class="product-description"><?php echo htmlspecialchars($row['description']); ?></p>
+                    <p class="product-stock <?php echo $stock_class; ?>" style="margin-top: 10px;">Stock: <?php echo htmlspecialchars($row['stock']); ?></p>
                     <p class="product-price" style="font-size: 1.2rem; font-weight: 600; color: var(--accent); margin-top: 10px;">₱<?php echo htmlspecialchars($row['price']); ?></p>
                     <div class="admin-product-actions">
                         <button class="edit-product-btn"><i class="fas fa-edit"></i> Edit</button>
@@ -424,10 +420,14 @@ $result = $conn->query($sql);
                         <label for="edit-product-name" style="display: block; margin-bottom: 5px; font-weight: 600;">Product Name</label>
                         <input type="text" id="edit-product-name" name="name" required style="width: 100%; padding: 10px;">
                     </div>
-                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-bottom: 20px;">
+                    <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; margin-bottom: 20px;">
                         <div>
                             <label for="edit-product-price" style="display: block; margin-bottom: 5px; font-weight: 600;">Price</label>
                             <input type="number" step="0.01" id="edit-product-price" name="price" required style="width: 100%; padding: 10px;">
+                        </div>
+                        <div>
+                            <label for="edit-product-stock" style="display: block; margin-bottom: 5px; font-weight: 600;">Stock</label>
+                            <input type="number" id="edit-product-stock" name="stock" required style="width: 100%; padding: 10px;" min="0">
                         </div>
                         <div>
                             <label for="edit-product-category" style="display: block; margin-bottom: 5px; font-weight: 600;">Category</label>
@@ -459,6 +459,92 @@ $result = $conn->query($sql);
         </div>
     </div>
 
+    <!-- Add Product Modal -->
+    <div id="add-product-modal" class="modal" style="display: none;">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>Add New Product</h2>
+                <span class="close-btn">&times;</span>
+            </div>
+            <div class="modal-body">
+                <form action="" method="post" enctype="multipart/form-data">
+                    <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; margin-bottom: 20px;">
+                        <div>
+                            <label for="add-product-name" style="display: block; margin-bottom: 5px; font-weight: 600;">Product Name</label>
+                            <input type="text" id="add-product-name" name="name" class="form-control" required>
+                        </div>
+                        <div>
+                            <label for="add-product-price" style="display: block; margin-bottom: 5px; font-weight: 600;">Price</label>
+                            <input type="number" step="0.01" id="add-product-price" name="price" class="form-control" required>
+                        </div>
+                        <div>
+                            <label for="add-product-stock" style="display: block; margin-bottom: 5px; font-weight: 600;">Stock</label>
+                            <input type="number" id="add-product-stock" name="stock" class="form-control" required value="0" min="0">
+                        </div>
+                    </div>
+                    <div style="margin-bottom: 20px;">
+                        <label for="add-product-category" style="display: block; margin-bottom: 5px; font-weight: 600;">Category</label>
+                        <select id="add-product-category" name="category_ids[]" class="form-control">
+                            <option value="">Select a category (optional)</option>
+                            <?php if(!empty($categories)): ?>
+                                <?php foreach($categories as $category): ?>
+                                    <option value="<?php echo $category['id']; ?>"><?php echo htmlspecialchars($category['name']); ?></option>
+                                <?php endforeach; ?>
+                            <?php endif; ?>
+                        </select>
+                    </div>
+                    <div style="margin-bottom: 20px;">
+                        <label for="add-product-description" style="display: block; margin-bottom: 5px; font-weight: 600;">Description</label>
+                        <textarea id="add-product-description" name="description" class="form-control" required style="min-height: 100px;"></textarea>
+                    </div>
+                    <div style="margin-bottom: 20px;">
+                        <label for="add-product-images" style="display: block; margin-bottom: 5px; font-weight: 600;">Product Images</label>
+                        <input type="file" id="add-product-images" name="images[]" multiple required>
+                    </div>
+                    <button type="submit" name="add_product" class="btn-primary" style="width: 100%;">Add Product</button>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- Manage Categories Modal -->
+    <div id="manage-categories-modal" class="modal" style="display: none;">
+        <div class="modal-content" style="max-width: 600px;">
+            <div class="modal-header">
+                <h2>Manage Categories</h2>
+                <span class="close-btn">&times;</span>
+            </div>
+            <div class="modal-body">
+                <form action="edit_products.php" method="post" style="display: flex; gap: 10px; margin-bottom: 20px;">
+                    <input type="text" name="name" placeholder="New Category Name" required class="form-control" style="flex-grow: 1;">
+                    <button type="submit" name="add_category" class="btn-primary" style="margin-top: 0;">Add</button>
+                </form>
+                <div class="orders-table-container" style="max-height: 300px; overflow-y: auto;">
+                    <table class="orders-table">
+                        <tbody>
+                            <?php if (empty($categories)): ?>
+                                <tr><td colspan="2">No categories found.</td></tr>
+                            <?php else: ?>
+                                <?php foreach($categories as $category): ?>
+                                <tr data-id="<?php echo $category['id']; ?>" data-name="<?php echo htmlspecialchars($category['name']); ?>">
+                                    <td><?php echo htmlspecialchars($category['name']); ?></td>
+                                    <td style="text-align: right; width: 100px;">
+                                        <button class="edit-category-btn" title="Edit Category" style="background: var(--accent); color: var(--bg); border: none; padding: 5px 10px; border-radius: 5px; cursor: pointer; margin-right: 5px;"><i class="fas fa-edit"></i></button>
+                                        <form action="edit_products.php" method="post" onsubmit="return confirm('Are you sure you want to delete this category? Products in this category will become uncategorized.');" style="display: inline;">
+                                            <input type="hidden" name="id" value="<?php echo $category['id']; ?>">
+                                            <button type="submit" name="delete_category" class="delete-product-btn" title="Delete Category"><i class="fas fa-trash"></i></button>
+                                        </form>
+                                    </td>
+                                </tr>
+                                <?php endforeach; ?>
+                            <?php endif; ?>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <!-- Edit Category Modal -->
     <div id="edit-category-modal" class="modal" style="display: none;">
         <div class="modal-content" style="max-width: 500px;">
@@ -486,6 +572,7 @@ $result = $conn->query($sql);
     document.addEventListener('DOMContentLoaded', () => {
         const productModal = document.getElementById('edit-product-modal');
         const closeProductBtn = productModal.querySelector('.close-btn');
+
         const editButtons = document.querySelectorAll('.edit-product-btn');
         const editForm = productModal.querySelector('form');
         const imageManagerContainer = document.getElementById('edit-product-image-manager');
@@ -500,6 +587,7 @@ $result = $conn->query($sql);
                 productModal.querySelector('#edit-product-name').value = card.dataset.name;
                 productModal.querySelector('#edit-product-description').value = card.dataset.description;
                 productModal.querySelector('#edit-product-price').value = card.dataset.price;
+                productModal.querySelector('#edit-product-stock').value = card.dataset.stock;
                 productModal.querySelector('#edit-product-new-images').value = '';
 
                 // Populate category checkboxes
@@ -570,6 +658,7 @@ $result = $conn->query($sql);
                         card.dataset.name = product.name;
                         card.dataset.description = product.description;
                         card.dataset.price = product.price;
+                        card.dataset.stock = product.stock;
                         card.dataset.categoryIds = product.category_ids || '';
 
                         const primaryImage = product.primary_image || 'placeholder.png';
@@ -578,6 +667,7 @@ $result = $conn->query($sql);
                         card.querySelector('.product-name').textContent = product.name;
                         card.querySelector('.product-categories').textContent = product.category_names || 'Uncategorized';
                         card.querySelector('.product-description').textContent = product.description;
+                        card.querySelector('.product-stock').textContent = `Stock: ${product.stock}`;
                         card.querySelector('.product-price').textContent = `₱${product.price}`;
                     }
 
@@ -597,12 +687,63 @@ $result = $conn->query($sql);
             }
         });
 
-        closeProductBtn.addEventListener('click', () => productModal.style.display = 'none');
-        window.addEventListener('click', (e) => { if (e.target === productModal) productModal.style.display = 'none'; });
+        // --- Product Search ---
+        const searchInput = document.getElementById('product-search');
+        if (searchInput) {
+            const productGrid = document.querySelector('.grid');
+            const productCards = productGrid.querySelectorAll('.card');
 
-        // Category Modal
+            // Only set up search if there are products to filter
+            if (productCards.length > 0) {
+                let notFoundMessage = productGrid.querySelector('.no-search-results');
+                if (!notFoundMessage) {
+                    notFoundMessage = document.createElement('p');
+                    notFoundMessage.textContent = 'No products match your search.';
+                    notFoundMessage.className = 'no-search-results';
+                    notFoundMessage.style.cssText = 'color: var(--text-muted); grid-column: 1 / -1; text-align: center; padding: 40px 0; display: none;';
+                    productGrid.appendChild(notFoundMessage);
+                }
+
+                searchInput.addEventListener('input', () => {
+                    const searchTerm = searchInput.value.toLowerCase().trim();
+                    let visibleCount = 0;
+
+                    productCards.forEach(card => {
+                        const productName = card.dataset.name.toLowerCase();
+                        if (productName.includes(searchTerm)) {
+                            card.style.display = ''; // Reset to CSS default
+                            visibleCount++;
+                        } else {
+                            card.style.display = 'none';
+                        }
+                    });
+
+                    notFoundMessage.style.display = (visibleCount === 0) ? 'block' : 'none';
+                });
+            }
+        }
+
+        // --- Modal Handling ---
+
+        // Add Product Modal
+        const addProductModal = document.getElementById('add-product-modal');
+        const addProductBtn = document.getElementById('add-product-btn');
+        const closeAddProductBtn = addProductModal.querySelector('.close-btn');
+
+        // Edit Product Modal (already defined)
+
+        // Manage Categories Modal
+        const manageCategoriesModal = document.getElementById('manage-categories-modal');
+        const manageCategoriesBtn = document.getElementById('manage-categories-btn');
+        const closeManageCategoriesBtn = manageCategoriesModal.querySelector('.close-btn');
+
+        // Edit Category Modal
         const categoryModal = document.getElementById('edit-category-modal');
         const closeCategoryBtn = categoryModal.querySelector('.close-btn');
+
+        // Open Triggers
+        addProductBtn.addEventListener('click', () => addProductModal.style.display = 'block');
+        manageCategoriesBtn.addEventListener('click', () => manageCategoriesModal.style.display = 'block');
         document.querySelectorAll('.edit-category-btn').forEach(button => {
             button.addEventListener('click', (e) => {
                 const row = e.target.closest('tr');
@@ -611,8 +752,20 @@ $result = $conn->query($sql);
                 categoryModal.style.display = 'block';
             });
         });
+
+        // Close Triggers
+        closeAddProductBtn.addEventListener('click', () => addProductModal.style.display = 'none');
+        closeProductBtn.addEventListener('click', () => productModal.style.display = 'none');
+        closeManageCategoriesBtn.addEventListener('click', () => manageCategoriesModal.style.display = 'none');
         closeCategoryBtn.addEventListener('click', () => categoryModal.style.display = 'none');
-        window.addEventListener('click', (e) => { if (e.target === categoryModal) categoryModal.style.display = 'none'; });
+
+        // Close on outside click
+        window.addEventListener('click', (e) => {
+            if (e.target === addProductModal) addProductModal.style.display = 'none';
+            if (e.target === productModal) productModal.style.display = 'none';
+            if (e.target === manageCategoriesModal) manageCategoriesModal.style.display = 'none';
+            if (e.target === categoryModal) categoryModal.style.display = 'none';
+        });
     });
     </script>
 </body>

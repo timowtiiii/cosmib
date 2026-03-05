@@ -7,6 +7,67 @@ if(!isset($_SESSION['admin_loggedin']) || $_SESSION['admin_loggedin'] !== true){
     exit;
 }
 
+// Handle POST requests for adding/deleting users
+if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    // --- ADD USER ---
+    if (isset($_POST['add_user'])) {
+        $username = trim($_POST['username']);
+        $email = trim($_POST['email']);
+        $password = $_POST['password'];
+        $confirm_password = $_POST['confirm_password'];
+        $role = $_POST['role'];
+
+        if (empty($username) || empty($email) || empty($password)) {
+            $_SESSION['message'] = ['type' => 'error', 'text' => 'Please fill in all required fields.'];
+        } elseif ($password !== $confirm_password) {
+            $_SESSION['message'] = ['type' => 'error', 'text' => 'Passwords do not match.'];
+        } elseif (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
+            $_SESSION['message'] = ['type' => 'error', 'text' => 'Invalid email format.'];
+        } elseif (!in_array($role, ['user', 'admin'])) {
+            $_SESSION['message'] = ['type' => 'error', 'text' => 'Invalid role selected.'];
+        } else {
+            // Check for existing username or email
+            $stmt_check = $conn->prepare("SELECT id FROM users WHERE username = ? OR email = ?");
+            $stmt_check->bind_param("ss", $username, $email);
+            $stmt_check->execute();
+            $stmt_check->store_result();
+            if ($stmt_check->num_rows > 0) {
+                $_SESSION['message'] = ['type' => 'error', 'text' => 'Username or email is already taken.'];
+            } else {
+                $hashed_password = password_hash($password, PASSWORD_DEFAULT);
+                $stmt_insert = $conn->prepare("INSERT INTO users (username, email, password, role) VALUES (?, ?, ?, ?)");
+                $stmt_insert->bind_param("ssss", $username, $email, $hashed_password, $role);
+                if ($stmt_insert->execute()) {
+                    $_SESSION['message'] = ['type' => 'success', 'text' => 'User added successfully.'];
+                } else {
+                    $_SESSION['message'] = ['type' => 'error', 'text' => 'Failed to add user.'];
+                }
+            }
+        }
+        header("Location: admin_users.php");
+        exit;
+    }
+    // --- DELETE USER ---
+    elseif (isset($_POST['delete_user'])) {
+        $user_id_to_delete = (int)$_POST['user_id'];
+        $current_user_id = (int)$_SESSION['user_id'];
+
+        if ($user_id_to_delete === $current_user_id) {
+            $_SESSION['message'] = ['type' => 'error', 'text' => 'You cannot delete your own account.'];
+        } else {
+            $stmt_delete = $conn->prepare("DELETE FROM users WHERE id = ?");
+            $stmt_delete->bind_param("i", $user_id_to_delete);
+            if ($stmt_delete->execute()) {
+                $_SESSION['message'] = ['type' => 'success', 'text' => 'User deleted successfully.'];
+            } else {
+                $_SESSION['message'] = ['type' => 'error', 'text' => 'Failed to delete user.'];
+            }
+        }
+        header("Location: admin_users.php");
+        exit;
+    }
+}
+
 // Fetch all users
 $users_sql = "SELECT id, username, email, role, created_at FROM users ORDER BY created_at DESC";
 $users_result = $conn->query($users_sql);
@@ -39,9 +100,22 @@ $users_result = $conn->query($users_sql);
             <div class="admin-header">
                 <h3><i class="fas fa-users"></i> Manage Users</h3>
                 <div>
-                    <a href="download_users.php" class="btn-primary" style="padding: 10px 20px; font-size: 0.9rem;"><i class="fas fa-file-pdf"></i> Download User List (PDF)</a>
+                    <button id="add-user-btn" class="btn-secondary" style="padding: 10px 20px; font-size: 0.9rem; margin-right: 10px; cursor: pointer;"><i class="fas fa-user-plus"></i> Add User</button>
+                    <a href="download_users.php" class="btn-primary" style="padding: 10px 20px; font-size: 0.9rem; text-decoration: none;"><i class="fas fa-file-pdf"></i> Download User List (PDF)</a>
                 </div>
             </div>
+
+            <?php
+            if (isset($_SESSION['message'])) {
+                $message = $_SESSION['message'];
+                unset($_SESSION['message']); // Clear the message after displaying
+                if ($message['type'] === 'error') {
+                    echo '<div class="error-message" style="margin-bottom: 20px;">' . htmlspecialchars($message['text']) . '</div>';
+                } else {
+                    echo '<div style="color: #28a745; background: rgba(40, 167, 69, 0.1); border: 1px solid rgba(40, 167, 69, 0.3); text-align: center; margin-bottom: 20px; padding: 10px; border-radius: 5px;">' . htmlspecialchars($message['text']) . '</div>';
+                }
+            }
+            ?>
 
             <?php if ($users_result->num_rows > 0): ?>
                 <table class="orders-table">
@@ -63,7 +137,15 @@ $users_result = $conn->query($users_sql);
                                 <td><?php echo htmlspecialchars($user['email']); ?></td>
                                 <td><?php echo htmlspecialchars(ucfirst($user['role'])); ?></td>
                                 <td><?php echo date('M d, Y h:i A', strtotime($user['created_at'])); ?></td>
-                                <td><button class="user-purchases-toggle" data-user-id="<?php echo $user['id']; ?>">View Purchases</button></td>
+                                <td style="display: flex; gap: 10px; align-items: center;">
+                                    <button class="user-purchases-toggle" data-user-id="<?php echo $user['id']; ?>">View Purchases</button>
+                                    <?php if ($user['id'] != $_SESSION['user_id']): ?>
+                                        <form action="admin_users.php" method="post" onsubmit="return confirm('Are you sure you want to delete this user? This action cannot be undone.');" style="display: inline;">
+                                            <input type="hidden" name="user_id" value="<?php echo $user['id']; ?>">
+                                            <button type="submit" name="delete_user" class="delete-product-btn" title="Delete User"><i class="fas fa-trash"></i></button>
+                                        </form>
+                                    <?php endif; ?>
+                                </td>
                             </tr>
                             <tr class="user-purchases-row" id="user-purchases-<?php echo $user['id']; ?>">
                                 <td colspan="6">
@@ -150,8 +232,57 @@ $users_result = $conn->query($users_sql);
             <?php endif; ?>
         </div>
     </div>
+
+    <!-- Add User Modal -->
+    <div id="add-user-modal" class="modal" style="display: none;">
+        <div class="modal-content" style="max-width: 500px;">
+            <div class="modal-header">
+                <h2>Add New User</h2>
+                <span class="close-btn">&times;</span>
+            </div>
+            <div class="modal-body">
+                <form action="admin_users.php" method="post">
+                    <div class="form-group">
+                        <label for="add-username">Username</label>
+                        <input type="text" id="add-username" name="username" class="form-control" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="add-email">Email Address</label>
+                        <input type="email" id="add-email" name="email" class="form-control" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="add-password">Password</label>
+                        <input type="password" id="add-password" name="password" class="form-control" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="add-confirm-password">Confirm Password</label>
+                        <input type="password" id="add-confirm-password" name="confirm_password" class="form-control" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="add-role">Role</label>
+                        <select id="add-role" name="role" class="form-control" required>
+                            <option value="user" selected>User</option>
+                            <option value="admin">Admin</option>
+                        </select>
+                    </div>
+                    <button type="submit" name="add_user" class="btn-primary" style="width: 100%;">Add User</button>
+                </form>
+            </div>
+        </div>
+    </div>
+
     <script>
         document.addEventListener('DOMContentLoaded', () => {
+            // --- Modal Handling for Add User ---
+            const addUserModal = document.getElementById('add-user-modal');
+            const addUserBtn = document.getElementById('add-user-btn');
+            const closeBtn = addUserModal.querySelector('.close-btn');
+
+            addUserBtn.addEventListener('click', () => addUserModal.style.display = 'block');
+            closeBtn.addEventListener('click', () => addUserModal.style.display = 'none');
+            window.addEventListener('click', (event) => { if (event.target == addUserModal) { addUserModal.style.display = 'none'; } });
+
+
             document.querySelector('.admin-main').addEventListener('click', function(e) {
                 // Toggle user purchases
                 if (e.target && e.target.classList.contains('user-purchases-toggle')) {
